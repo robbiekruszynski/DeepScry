@@ -3,15 +3,18 @@
 import * as React from "react";
 
 import { ModeToggle } from "@/components/mode-toggle";
+import { ImportTab } from "@/components/scry/import-tab";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Deck } from "@/lib/deck";
 
 type TabKey = "overview" | "hand" | "curve" | "probabilities" | "import";
 
 export function ScryApp() {
   const [tab, setTab] = React.useState<TabKey>("overview");
+  const [deck, setDeck] = React.useState<Deck | null>(null);
 
   return (
     <div className="flex-1">
@@ -52,7 +55,17 @@ export function ScryApp() {
                   <CardTitle>Overview</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  Import a deck to see stats here.
+                  {deck ? (
+                    <>
+                      Deck imported. Next up: stats overview.
+                      <div className="mt-2">
+                        {deck.entries.reduce((s, e) => s + e.count, 0)} cards (
+                        {deck.entries.length} unique)
+                      </div>
+                    </>
+                  ) : (
+                    "Import a deck to see stats here."
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -91,14 +104,7 @@ export function ScryApp() {
             </TabsContent>
 
             <TabsContent value="import" className="m-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Import decklist</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Paste a decklist (one card per line) to begin.
-                </CardContent>
-              </Card>
+              <ImportTab deck={deck} onDeckChange={setDeck} />
             </TabsContent>
           </div>
         </Tabs>
