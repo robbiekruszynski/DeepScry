@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { ModeToggle } from "@/components/mode-toggle";
 import { ImportTab } from "@/components/scry/import-tab";
+import { OverviewTab } from "@/components/scry/overview-tab";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -50,24 +51,18 @@ export function ScryApp() {
             <Separator />
 
             <TabsContent value="overview" className="m-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Overview</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {deck ? (
-                    <>
-                      Deck imported. Next up: stats overview.
-                      <div className="mt-2">
-                        {deck.entries.reduce((s, e) => s + e.count, 0)} cards (
-                        {deck.entries.length} unique)
-                      </div>
-                    </>
-                  ) : (
-                    "Import a deck to see stats here."
-                  )}
-                </CardContent>
-              </Card>
+              {deck ? (
+                <OverviewTab deck={deck} />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Overview</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground">
+                    Import a deck to see stats here.
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="hand" className="m-0">
