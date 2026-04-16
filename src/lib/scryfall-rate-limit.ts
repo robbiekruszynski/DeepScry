@@ -1,0 +1,41 @@
+/** Scryfall allows under 10 req/s; use a comfortable gap between completed requests. */
+export const MIN_MS_BETWEEN_SCRYFALL_REQUESTS = 120;
+
+const SCRYFALL_UA =
+  "Scry/0.1 (https://github.com/robbiekruszynski/Scry; deck analyzer)";
+
+export function scryfallFetchHeaders(): HeadersInit {
+  return {
+    Accept: "application/json",
+    "User-Agent": SCRYFALL_UA,
+  };
+}
+
+export function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Runs async work strictly one-at-a-time (no overlapping I/O).
+ * Each task waits for the previous task to fully finish before starting.
+ */
+export function createAsyncQueue() {
+  let chain: Promise<void> = Promise.resolve();
+
+  return function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = chain.then(() => fn());
+    chain = run.then(
+      () => {},
+      () => {}
+    );
+    return run;
+  };
+}
+
+export function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const n = Number(header.trim());
+  if (!Number.isFinite(n) || n < 0) return null;
+  // Scryfall typically sends seconds
+  return n * 1000;
+}

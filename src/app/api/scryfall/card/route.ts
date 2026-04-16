@@ -1,29 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
-let lastRequestAt = 0;
-let throttleChain: Promise<void> = Promise.resolve();
+import {
+  createAsyncQueue,
+  delay,
+  MIN_MS_BETWEEN_SCRYFALL_REQUESTS,
+  parseRetryAfterMs,
+  scryfallFetchHeaders,
+} from "@/lib/scryfall-rate-limit";
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
+const enqueue = createAsyncQueue();
 
-async function throttleScryfallRequest() {
-  const previous = throttleChain;
-  let release = () => {};
-  throttleChain = new Promise<void>((resolve) => {
-    release = resolve;
+async function fetchFromScryfall(url: string) {
+  const res = await fetch(url, {
+    method: "GET",
+    headers: scryfallFetchHeaders(),
+    cache: "no-store",
   });
-  await previous;
-  const elapsed = Date.now() - lastRequestAt;
-  const waitFor = Math.max(0, 100 - elapsed);
-  if (waitFor > 0) await delay(waitFor);
-  lastRequestAt = Date.now();
-  release();
+  const text = await res.text();
+  return { res, text };
 }
 
 /**
  * Proxies Scryfall so the browser never calls api.scryfall.com directly
  * (avoids CORS / adblock / mixed-content issues in local dev).
+ * Requests are serialized so we never exceed Scryfall's rate limits.
  */
 export async function GET(req: NextRequest) {
   const fuzzy = req.nextUrl.searchParams.get("fuzzy")?.trim();
@@ -31,27 +31,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing fuzzy query parameter." }, { status: 400 });
   }
 
-  await throttleScryfallRequest();
+  return enqueue(async () => {
+    await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
 
-  const url = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
+    const url = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy)}`;
+    let { res, text } = await fetchFromScryfall(url);
+
+    if (res.status === 429) {
+      const retryMs = Math.max(
+        parseRetryAfterMs(res.headers.get("Retry-After")) ?? 60_000,
+        60_000
+      );
+      await delay(retryMs);
+      await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+      ({ res, text } = await fetchFromScryfall(url));
+    }
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: text || res.statusText, status: res.status, details: text },
+        { status: res.status }
+      );
+    }
+
+    try {
+      const json = JSON.parse(text) as unknown;
+      return NextResponse.json(json);
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON from Scryfall" }, { status: 502 });
+    }
   });
-
-  const text = await res.text();
-  if (!res.ok) {
-    return NextResponse.json(
-      { error: text || res.statusText, status: res.status },
-      { status: res.status }
-    );
-  }
-
-  try {
-    const json = JSON.parse(text) as unknown;
-    return NextResponse.json(json);
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON from Scryfall" }, { status: 502 });
-  }
 }

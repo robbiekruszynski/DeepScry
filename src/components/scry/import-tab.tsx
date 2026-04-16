@@ -20,29 +20,6 @@ type ImportResult = {
   errors: string[];
 };
 
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  fn: (item: T, idx: number) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (true) {
-      const idx = nextIndex++;
-      if (idx >= items.length) return;
-      results[idx] = await fn(items[idx]!, idx);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
-  );
-
-  return results;
-}
-
 export function ImportTab({
   deck,
   onDeckChange,
@@ -67,13 +44,14 @@ export function ImportTab({
 
     const cardsByRequestedName = new Map<string, ScryfallCard>();
 
-    await mapWithConcurrency(uniqueNames, 6, async (name) => {
+    let done = 0;
+    for (const name of uniqueNames) {
       const cached = getCachedCardByName(name);
       const card = cached ?? (await fetchCardByNameFuzzy(name));
       cardsByRequestedName.set(name, card);
-      setProgress((p) => ({ ...p, done: Math.min(p.done + 1, p.total) }));
-      return card;
-    });
+      done += 1;
+      setProgress({ done, total: uniqueNames.length });
+    }
 
     const { entries, missingNames } = buildEntries(cardsByRequestedName, parsed.lines);
     if (missingNames.length) {

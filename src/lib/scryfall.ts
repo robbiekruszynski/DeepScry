@@ -1,3 +1,11 @@
+import {
+  createAsyncQueue,
+  delay,
+  MIN_MS_BETWEEN_SCRYFALL_REQUESTS,
+  parseRetryAfterMs,
+  scryfallFetchHeaders,
+} from "@/lib/scryfall-rate-limit";
+
 export type ScryfallCard = {
   id: string;
   name: string;
@@ -16,8 +24,8 @@ type CacheRecord = {
 const STORAGE_KEY = "scry:scryfall-cache:v1";
 
 let memoryCache: Map<string, CacheRecord> | null = null;
-let lastRequestAt = 0;
-let throttleChain: Promise<void> = Promise.resolve();
+
+const enqueueScryfall = createAsyncQueue();
 
 function getMemoryCache() {
   if (!memoryCache) memoryCache = new Map();
@@ -26,28 +34,6 @@ function getMemoryCache() {
 
 function normalizeKey(name: string) {
   return name.trim().toLowerCase();
-}
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function throttleScryfallRequest() {
-  const previous = throttleChain;
-  let release = () => {};
-
-  throttleChain = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-
-  await previous;
-  const elapsed = Date.now() - lastRequestAt;
-  const waitFor = Math.max(0, 100 - elapsed);
-  if (waitFor > 0) await delay(waitFor);
-  lastRequestAt = Date.now();
-  release();
 }
 
 function readStorage(): Record<string, CacheRecord> {
@@ -113,46 +99,82 @@ function persistCache(requestedName: string, card: ScryfallCard) {
   writeStorage(store);
 }
 
+function headersForFetchUrl(url: string): HeadersInit {
+  if (typeof window !== "undefined" && url.startsWith("/api")) {
+    return { Accept: "application/json" };
+  }
+  return scryfallFetchHeaders();
+}
+
+async function fetchCardPayload(url: string): Promise<{
+  ok: boolean;
+  status: number;
+  text: string;
+  retryAfter: string | null;
+}> {
+  const res = await fetch(url, {
+    method: "GET",
+    headers: headersForFetchUrl(url),
+    cache: "no-store",
+  });
+  const text = await res.text().catch(() => "");
+  return {
+    ok: res.ok,
+    status: res.status,
+    text,
+    retryAfter: res.headers.get("Retry-After"),
+  };
+}
+
 export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> {
   const cached = getCachedCardByName(name);
   if (cached) return cached;
 
-  await throttleScryfallRequest();
+  return enqueueScryfall(async () => {
+    await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
 
-  const useProxy = typeof window !== "undefined";
-  const url = useProxy
-    ? `/api/scryfall/card?fuzzy=${encodeURIComponent(name)}`
-    : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
+    const useProxy = typeof window !== "undefined";
+    const url = useProxy
+      ? `/api/scryfall/card?fuzzy=${encodeURIComponent(name)}`
+      : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
+    let payload = await fetchCardPayload(url);
 
-  const rawText = await res.text().catch(() => "");
-
-  if (!res.ok) {
-    let detail = rawText || res.statusText;
-    try {
-      const errJson = JSON.parse(rawText) as { error?: string };
-      if (errJson?.error) detail = errJson.error;
-    } catch {
-      // keep detail as text
+    if (payload.status === 429) {
+      const retryMs = Math.max(
+        parseRetryAfterMs(payload.retryAfter) ?? 60_000,
+        60_000
+      );
+      await delay(retryMs);
+      await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+      payload = await fetchCardPayload(url);
     }
-    throw new Error(`Scryfall fetch failed (${res.status}): ${detail}`);
-  }
 
-  let json: any;
-  try {
-    json = JSON.parse(rawText);
-  } catch {
-    throw new Error("Scryfall returned invalid JSON.");
-  }
+    if (!payload.ok) {
+      let detail = payload.text || String(payload.status);
+      try {
+        const errJson = JSON.parse(payload.text) as {
+          details?: string;
+          error?: string;
+        };
+        if (errJson?.details) detail = errJson.details;
+        else if (errJson?.error) detail = errJson.error;
+      } catch {
+        // keep detail
+      }
+      throw new Error(`Scryfall fetch failed (${payload.status}): ${detail}`);
+    }
 
-  const card = cardFromScryfallJson(json);
-  persistCache(name, card);
+    let json: any;
+    try {
+      json = JSON.parse(payload.text);
+    } catch {
+      throw new Error("Scryfall returned invalid JSON.");
+    }
 
-  return card;
+    const card = cardFromScryfallJson(json);
+    persistCache(name, card);
+
+    return card;
+  });
 }
-
