@@ -75,7 +75,21 @@ export function ImportTab({
       return card;
     });
 
-    const entries = buildEntries(cardsByRequestedName, parsed.lines);
+    const { entries, missingNames } = buildEntries(cardsByRequestedName, parsed.lines);
+    if (missingNames.length) {
+      return {
+        deck: null,
+        errors: [
+          `Could not match ${missingNames.length} card name(s) after fetch: ${missingNames.slice(0, 8).join(", ")}${missingNames.length > 8 ? "…" : ""}`,
+        ],
+      };
+    }
+    if (entries.length === 0 && parsed.lines.length > 0) {
+      return {
+        deck: null,
+        errors: ["Deck resolved to zero cards. Check the decklist format and try again."],
+      };
+    }
     return {
       deck: {
         entries,

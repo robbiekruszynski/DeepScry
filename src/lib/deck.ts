@@ -51,6 +51,7 @@ export function parseDecklist(text: string): {
   const lines: ParsedLine[] = [];
 
   const rawLines = text
+    .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
@@ -80,20 +81,29 @@ export function parseDecklist(text: string): {
   return { lines, errors };
 }
 
-export function buildEntries(cardsByName: Map<string, ScryfallCard>, parsed: ParsedLine[]): DeckEntry[] {
+export function buildEntries(
+  cardsByName: Map<string, ScryfallCard>,
+  parsed: ParsedLine[]
+): { entries: DeckEntry[]; missingNames: string[] } {
   const merged = new Map<string, { card: ScryfallCard; count: number }>();
+  const missing = new Set<string>();
 
   for (const line of parsed) {
     const card = cardsByName.get(line.name);
-    if (!card) continue;
+    if (!card) {
+      missing.add(line.name);
+      continue;
+    }
     const prev = merged.get(card.id);
     if (prev) prev.count += line.count;
     else merged.set(card.id, { card, count: line.count });
   }
 
-  return Array.from(merged.values())
+  const entries = Array.from(merged.values())
     .sort((a, b) => a.card.name.localeCompare(b.card.name))
     .map((x) => ({ card: x.card, count: x.count }));
+
+  return { entries, missingNames: Array.from(missing) };
 }
 
 export function expandDeck(deck: Deck): ScryfallCard[] {

@@ -82,31 +82,8 @@ export function getCachedCardByName(name: string): ScryfallCard | null {
   return rec.card;
 }
 
-export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> {
-  const cached = getCachedCardByName(name);
-  if (cached) return cached;
-
-  await throttleScryfallRequest();
-
-  const url = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(
-    name
-  )}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `Scryfall fetch failed (${res.status}): ${text || res.statusText}`
-    );
-  }
-
-  const json = (await res.json()) as any;
-  const card: ScryfallCard = {
+function cardFromScryfallJson(json: any): ScryfallCard {
+  return {
     id: String(json.id),
     name: String(json.name),
     mana_cost: json.mana_cost ? String(json.mana_cost) : null,
@@ -117,14 +94,64 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
       : [],
     oracle_text: json.oracle_text ? String(json.oracle_text) : undefined,
   };
+}
 
+function persistCache(requestedName: string, card: ScryfallCard) {
   const rec: CacheRecord = { fetchedAt: Date.now(), card };
-  const key = normalizeKey(card.name);
-  getMemoryCache().set(key, rec);
+  const requestedKey = normalizeKey(requestedName);
+  const canonicalKey = normalizeKey(card.name);
+  getMemoryCache().set(requestedKey, rec);
+  if (requestedKey !== canonicalKey) {
+    getMemoryCache().set(canonicalKey, rec);
+  }
 
   const store = readStorage();
-  store[key] = rec;
+  store[requestedKey] = rec;
+  if (requestedKey !== canonicalKey) {
+    store[canonicalKey] = rec;
+  }
   writeStorage(store);
+}
+
+export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> {
+  const cached = getCachedCardByName(name);
+  if (cached) return cached;
+
+  await throttleScryfallRequest();
+
+  const useProxy = typeof window !== "undefined";
+  const url = useProxy
+    ? `/api/scryfall/card?fuzzy=${encodeURIComponent(name)}`
+    : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+
+  const rawText = await res.text().catch(() => "");
+
+  if (!res.ok) {
+    let detail = rawText || res.statusText;
+    try {
+      const errJson = JSON.parse(rawText) as { error?: string };
+      if (errJson?.error) detail = errJson.error;
+    } catch {
+      // keep detail as text
+    }
+    throw new Error(`Scryfall fetch failed (${res.status}): ${detail}`);
+  }
+
+  let json: any;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error("Scryfall returned invalid JSON.");
+  }
+
+  const card = cardFromScryfallJson(json);
+  persistCache(name, card);
 
   return card;
 }
