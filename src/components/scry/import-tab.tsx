@@ -39,7 +39,11 @@ export function ImportTab({
     const parsed = parseDecklist(text);
     if (parsed.errors.length) return { deck: null, errors: parsed.errors };
 
-    const uniqueNames = Array.from(new Set(parsed.lines.map((l) => l.name)));
+    const commanderInput = commanderName.trim();
+    const namesToResolve = parsed.lines.map((l) => l.name);
+    if (commanderInput) namesToResolve.push(commanderInput);
+
+    const uniqueNames = Array.from(new Set(namesToResolve));
     setProgress({ done: 0, total: uniqueNames.length });
 
     const cardsByRequestedName = new Map<string, ScryfallCard>();
@@ -68,10 +72,27 @@ export function ImportTab({
         errors: ["Deck resolved to zero cards. Check the decklist format and try again."],
       };
     }
+
+    if (commanderInput) {
+      const commanderCard = cardsByRequestedName.get(commanderInput);
+      if (!commanderCard) {
+        return {
+          deck: null,
+          errors: [`Could not resolve commander: ${commanderInput}`],
+        };
+      }
+
+      const alreadyInDeck = entries.some((e) => e.card.id === commanderCard.id);
+      if (!alreadyInDeck) {
+        entries.push({ card: commanderCard, count: 1 });
+        entries.sort((a, b) => a.card.name.localeCompare(b.card.name));
+      }
+    }
+
     return {
       deck: {
         entries,
-        commanderName: commanderName.trim() || undefined,
+        commanderName: commanderInput || undefined,
       },
       errors: [],
     };
@@ -122,7 +143,6 @@ export function ImportTab({
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="secondary">1 card per line</Badge>
               <Badge variant="secondary">Optional leading count</Badge>
-              <span>Fetched from Scryfall with local caching.</span>
             </div>
           </div>
 
