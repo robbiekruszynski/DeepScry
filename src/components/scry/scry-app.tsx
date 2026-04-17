@@ -12,13 +12,27 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Deck } from "@/lib/deck";
+import type { CardTagMap, Deck } from "@/lib/deck";
 
 type TabKey = "overview" | "hand" | "curve" | "probabilities" | "import";
 
 export function ScryApp() {
   const [tab, setTab] = React.useState<TabKey>("overview");
   const [deck, setDeck] = React.useState<Deck | null>(null);
+  const [tagMap, setTagMap] = React.useState<CardTagMap>({});
+
+  React.useEffect(() => {
+    if (!deck) {
+      setTagMap({});
+      return;
+    }
+    const validIds = new Set(deck.entries.map((e) => e.card.id));
+    setTagMap((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).filter(([cardId]) => validIds.has(cardId))
+      )
+    );
+  }, [deck]);
 
   return (
     <div className="flex-1">
@@ -55,7 +69,7 @@ export function ScryApp() {
 
             <TabsContent value="overview" className="m-0">
               {deck ? (
-                <OverviewTab deck={deck} />
+                <OverviewTab deck={deck} tagMap={tagMap} />
               ) : (
                 <Card>
                   <CardHeader>
@@ -70,7 +84,7 @@ export function ScryApp() {
 
             <TabsContent value="hand" className="m-0">
               {deck ? (
-                <HandTab deck={deck} />
+                <HandTab deck={deck} tagMap={tagMap} />
               ) : (
                 <Card>
                   <CardHeader>
@@ -105,7 +119,11 @@ export function ScryApp() {
                     <CardTitle>Probabilities</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ProbabilitiesTab deck={deck} />
+                    <ProbabilitiesTab
+                      deck={deck}
+                      tagMap={tagMap}
+                      onTagMapChange={setTagMap}
+                    />
                   </CardContent>
                 </Card>
               ) : (

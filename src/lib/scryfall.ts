@@ -14,6 +14,7 @@ export type ScryfallCard = {
   type_line: string;
   color_identity: string[];
   oracle_text?: string;
+  image_url?: string;
 };
 
 type CacheRecord = {
@@ -69,6 +70,12 @@ export function getCachedCardByName(name: string): ScryfallCard | null {
 }
 
 function cardFromScryfallJson(json: any): ScryfallCard {
+  const faceImage =
+    Array.isArray(json.card_faces) && json.card_faces.length > 0
+      ? json.card_faces.find((f: any) => f?.image_uris?.normal)?.image_uris
+          ?.normal
+      : undefined;
+
   return {
     id: String(json.id),
     name: String(json.name),
@@ -79,6 +86,11 @@ function cardFromScryfallJson(json: any): ScryfallCard {
       ? json.color_identity.map((c: unknown) => String(c))
       : [],
     oracle_text: json.oracle_text ? String(json.oracle_text) : undefined,
+    image_url: json.image_uris?.normal
+      ? String(json.image_uris.normal)
+      : faceImage
+        ? String(faceImage)
+        : undefined,
   };
 }
 

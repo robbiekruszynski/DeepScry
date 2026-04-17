@@ -8,7 +8,13 @@ export type DeckEntry = {
 export type Deck = {
   entries: DeckEntry[];
   commanderName?: string;
+  archetype?: DeckArchetype;
 };
+
+export type DeckArchetype = "midrange" | "ramp" | "aggro" | "control" | "combo";
+
+export type CardTag = "ramp" | "interaction" | "draw" | "wincon";
+export type CardTagMap = Record<string, CardTag[]>;
 
 export type ParsedLine = {
   name: string;

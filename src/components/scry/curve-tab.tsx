@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Bar, Doughnut } from "react-chartjs-2";
+import { useTheme } from "next-themes";
 
 import type { Deck } from "@/lib/deck";
 import {
@@ -52,6 +53,15 @@ const TYPE_COLORS = [
   "#ec4899",
   "#eab308",
 ];
+const TYPE_COLORS_DARK = [
+  "#ffffff",
+  "#f1f5f9",
+  "#e2e8f0",
+  "#cbd5e1",
+  "#94a3b8",
+  "#f8fafc",
+  "#dbeafe",
+];
 
 /** Classic WUBRG (W uses warm gold so it reads on light + dark UI) */
 const WUBRG_COLORS = ["#fcd34d", "#2563eb", "#57534e", "#ef4444", "#16a34a"];
@@ -62,6 +72,9 @@ const chartBorder = {
 };
 
 export function CurveTab({ deck }: { deck: Deck }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   const curve = React.useMemo(() => manaCurveBuckets(deck), [deck]);
   const types = React.useMemo(() => typeDistribution(deck), [deck]);
   const colors = React.useMemo(() => colorIdentityCounts(deck), [deck]);
@@ -75,12 +88,12 @@ export function CurveTab({ deck }: { deck: Deck }) {
     scales: {
       x: {
         grid: { color: "rgba(148, 163, 184, 0.2)" },
-        ticks: { color: "var(--muted-foreground)" },
+        ticks: { color: isDark ? "#e2e8f0" : "#334155" },
       },
       y: {
         beginAtZero: true,
         grid: { color: "rgba(148, 163, 184, 0.2)" },
-        ticks: { color: "var(--muted-foreground)", precision: 0 },
+        ticks: { color: isDark ? "#e2e8f0" : "#334155", precision: 0 },
       },
     },
   } as const;
@@ -92,7 +105,7 @@ export function CurveTab({ deck }: { deck: Deck }) {
       legend: {
         position: "right" as const,
         labels: {
-          color: "var(--foreground)",
+          color: isDark ? "#ffffff" : "#0f172a",
           padding: 12,
           usePointStyle: true,
         },
@@ -139,7 +152,10 @@ export function CurveTab({ deck }: { deck: Deck }) {
                 {
                   data: types.values,
                   backgroundColor: types.labels.map(
-                    (_, i) => TYPE_COLORS[i % TYPE_COLORS.length]!
+                    (_, i) =>
+                      (isDark ? TYPE_COLORS_DARK : TYPE_COLORS)[
+                        i % TYPE_COLORS.length
+                      ]!
                   ),
                   ...chartBorder,
                 },

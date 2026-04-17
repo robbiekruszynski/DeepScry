@@ -1,4 +1,4 @@
-import type { Deck } from "@/lib/deck";
+import type { CardTagMap, Deck } from "@/lib/deck";
 import type { ScryfallCard } from "@/lib/scryfall";
 import {
   isArtifact,
@@ -127,12 +127,23 @@ export type ProbabilityRow = {
   probability: number;
 };
 
-export function computeProbabilities(deck: Deck): ProbabilityRow[] {
+function countByTag(deck: Deck, tagMap: CardTagMap, tag: "ramp" | "interaction") {
+  return deck.entries.reduce((sum, e) => {
+    const tagged = (tagMap[e.card.id] ?? []).includes(tag);
+    const heuristic = tag === "ramp" ? isRamp(e.card) : isInteraction(e.card);
+    return sum + (tagged || heuristic ? e.count : 0);
+  }, 0);
+}
+
+export function computeProbabilities(
+  deck: Deck,
+  tagMap: CardTagMap = {}
+): ProbabilityRow[] {
   const n = deck.entries.reduce((sum, e) => sum + e.count, 0);
   const hand = 7;
   const lands = countCards(deck, isLand);
-  const ramps = countCards(deck, isRamp);
-  const interactions = countCards(deck, isInteraction);
+  const ramps = countByTag(deck, tagMap, "ramp");
+  const interactions = countByTag(deck, tagMap, "interaction");
   const commanderCopies = deck.commanderName
     ? deck.entries.reduce(
         (sum, e) =>

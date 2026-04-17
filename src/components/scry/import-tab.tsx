@@ -2,7 +2,12 @@
 
 import * as React from "react";
 
-import { buildEntries, parseDecklist, type Deck } from "@/lib/deck";
+import {
+  buildEntries,
+  parseDecklist,
+  type Deck,
+  type DeckArchetype,
+} from "@/lib/deck";
 import {
   fetchCardByNameFuzzy,
   getCachedCardByName,
@@ -29,6 +34,7 @@ export function ImportTab({
 }) {
   const [text, setText] = React.useState<string>("");
   const [commanderName, setCommanderName] = React.useState<string>("");
+  const [archetype, setArchetype] = React.useState<DeckArchetype>("midrange");
   const [isImporting, setIsImporting] = React.useState(false);
   const [progress, setProgress] = React.useState<{ done: number; total: number }>(
     { done: 0, total: 0 }
@@ -93,6 +99,7 @@ export function ImportTab({
       deck: {
         entries,
         commanderName: commanderInput || undefined,
+        archetype,
       },
       errors: [],
     };
@@ -129,6 +136,22 @@ export function ImportTab({
               value={commanderName}
               onChange={(e) => setCommanderName(e.target.value)}
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="archetype">Archetype</Label>
+            <select
+              id="archetype"
+              value={archetype}
+              onChange={(e) => setArchetype(e.target.value as DeckArchetype)}
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="midrange">Midrange</option>
+              <option value="ramp">Ramp</option>
+              <option value="aggro">Aggro</option>
+              <option value="control">Control</option>
+              <option value="combo">Combo</option>
+            </select>
           </div>
 
           <div className="grid gap-2">
