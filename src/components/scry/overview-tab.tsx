@@ -5,12 +5,21 @@ import * as React from "react";
 import type { CardTagMap, Deck } from "@/lib/deck";
 import {
   deckHealthWarnings,
+  deckBenchmarkScores,
   simulateCurveProbabilities,
   colorIdentityViolations,
 } from "@/lib/commander-tools";
 import { computeDeckStats } from "@/lib/stats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 function StatCard({
   title,
@@ -47,6 +56,7 @@ export function OverviewTab({
 }) {
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
   const warnings = React.useMemo(() => deckHealthWarnings(deck), [deck]);
+  const benchmarkScores = React.useMemo(() => deckBenchmarkScores(deck), [deck]);
   const violations = React.useMemo(() => colorIdentityViolations(deck), [deck]);
   const curveOdds = React.useMemo(() => simulateCurveProbabilities(deck, 1200), [
     deck,
@@ -59,7 +69,7 @@ export function OverviewTab({
         <Badge variant="secondary">{stats.uniqueCards} unique</Badge>
         <Badge variant="secondary">{stats.totalCards} total</Badge>
         <span className="text-xs">
-          Ramp/interaction are best-effort heuristics (based on oracle text).
+          Ramp and interaction are automatically classified from card text and tags.
         </span>
       </div>
 
@@ -79,14 +89,122 @@ export function OverviewTab({
         <StatCard title="Interaction" value={stats.interactionCount} />
       </div>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">What these counts mean</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-44">Metric</TableHead>
+                <TableHead>What it means for deckbuilding</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">
+                  Total cards
+                </TableCell>
+                <TableCell>
+                  Total list size. Commander lists are typically 100 cards.
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">
+                  Lands / Land %
+                </TableCell>
+                <TableCell>
+                  Mana base density. Too low can cause missed land drops; too high can reduce spell
+                  density.
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">
+                  Average CMC
+                </TableCell>
+                <TableCell>
+                  Average mana value of nonland cards. Higher values usually mean slower starts.
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">
+                  Creatures
+                </TableCell>
+                <TableCell>
+                  Number of creature cards; indicates board presence and combat focus.
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">Ramp</TableCell>
+                <TableCell>
+                  Cards that increase available mana (rocks, land ramp, treasure generation, etc.).
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-foreground">
+                  Interaction
+                </TableCell>
+                <TableCell>
+                  Cards that answer threats (removal, counters, bounce, damage-based answers).
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Deck health warnings</CardTitle>
+            <CardTitle className="text-base">Deck health vs benchmark metas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="text-xs leading-relaxed text-muted-foreground">
+              These profiles are reference targets for common Commander environments (precon,
+              upgraded precon, local tournament, and cEDH-style). The score compares your deck's
+              lands, ramp, interaction, and average CMC to each profile. Higher percentages mean
+              your current build structure is closer to that environment's typical pacing and
+              density.
+            </div>
+            {benchmarkScores.map((b) => {
+              const pct = Math.round(b.score * 100);
+              return (
+                <div key={b.id} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span>{b.label}</span>
+                    <span className="font-medium text-foreground">{pct}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      className="h-2 rounded bg-primary"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="rounded border bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
+              Benchmarks compare: lands, ramp, interaction, and average CMC.
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Deck health notes</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {warnings.length === 0 ? (
-              <div className="text-muted-foreground">No major warnings detected.</div>
+              <div className="space-y-2 text-muted-foreground">
+                <div>No major warnings detected.</div>
+                <div className="rounded border bg-muted/20 px-2 py-1 text-xs">
+                  Example warnings you might see in other lists: low ramp density, low interaction
+                  density, average CMC too high for the selected benchmark, or non-100 card deck
+                  size.
+                </div>
+              </div>
             ) : (
               warnings.map((w, idx) => (
                 <div

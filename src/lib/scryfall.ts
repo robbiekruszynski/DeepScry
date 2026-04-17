@@ -54,7 +54,6 @@ function writeStorage(next: Record<string, CacheRecord>) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // ignore quota / privacy errors
   }
 }
 
@@ -62,7 +61,6 @@ export function getCachedCardByName(name: string): ScryfallCard | null {
   const key = normalizeKey(name);
   const mem = getMemoryCache().get(key);
   if (mem) {
-    // Old cache records may not include image fields.
     if (!mem.card.image_url && !mem.card.image_url_large) return null;
     return mem.card;
   }
@@ -194,9 +192,7 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
         };
         if (errJson?.details) detail = errJson.details;
         else if (errJson?.error) detail = errJson.error;
-      } catch {
-        // keep detail
-      }
+      } catch {}
       throw new Error(`Scryfall fetch failed (${payload.status}): ${detail}`);
     }
 

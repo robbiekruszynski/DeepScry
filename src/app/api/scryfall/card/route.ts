@@ -20,11 +20,6 @@ async function fetchFromScryfall(url: string) {
   return { res, text };
 }
 
-/**
- * Proxies Scryfall so the browser never calls api.scryfall.com directly
- * (avoids CORS / adblock / mixed-content issues in local dev).
- * Requests are serialized so we never exceed Scryfall's rate limits.
- */
 export async function GET(req: NextRequest) {
   const fuzzy = req.nextUrl.searchParams.get("fuzzy")?.trim();
   if (!fuzzy) {

@@ -58,8 +58,8 @@ export function ProbabilitiesTab({
       <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
         <div className="font-medium text-foreground">How tags affect probabilities</div>
         <div className="mt-1">
-          Manual tags are merged with automatic heuristics. Tagging cards directly
-          makes ramp/interaction/draw/wincon odds more accurate for your list.
+          Manual tags are combined with automatic card classification. Tagging cards directly
+          makes ramp, interaction, draw, and win condition odds match your list more closely.
         </div>
         <div className="mt-2 text-xs">
           Currently tagged cards: <span className="font-medium text-foreground">{taggedCards}</span>

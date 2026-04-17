@@ -75,7 +75,6 @@ export function colorIdentityCounts(deck: Deck) {
       continue;
     }
 
-    // Fallback for cards without mana cost text (lands, MDFC faces, etc.)
     for (const c of e.card.color_identity) {
       if (c in counts) counts[c as keyof typeof counts] += e.count;
     }

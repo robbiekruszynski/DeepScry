@@ -30,7 +30,6 @@ ChartJS.register(
   Legend
 );
 
-/** One color per CMC bucket (0 … 8+) for quick scanning */
 const MANA_CURVE_COLORS = [
   "#94a3b8",
   "#38bdf8",
@@ -43,7 +42,6 @@ const MANA_CURVE_COLORS = [
   "#dc2626",
 ];
 
-/** Lands → Planeswalkers: distinct hues */
 const TYPE_COLORS = [
   "#16a34a",
   "#2563eb",
@@ -63,7 +61,6 @@ const TYPE_COLORS_DARK = [
   "#f87171",
 ];
 
-/** Classic WUBRG (W uses warm gold so it reads on light + dark UI) */
 const WUBRG_COLORS = ["#fcd34d", "#2563eb", "#57534e", "#ef4444", "#16a34a"];
 
 const chartBorder = {

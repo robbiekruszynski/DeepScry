@@ -40,6 +40,8 @@ export function ImportTab({
     { done: 0, total: 0 }
   );
   const [errors, setErrors] = React.useState<string[]>([]);
+  const progressPercent =
+    progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   async function runImport(): Promise<ImportResult> {
     const parsed = parseDecklist(text);
@@ -180,11 +182,6 @@ export function ImportTab({
             <Button onClick={onImportClick} disabled={isImporting || !text.trim()}>
               {isImporting ? "Importing…" : "Import"}
             </Button>
-            {isImporting ? (
-              <div className="text-sm text-muted-foreground">
-                Fetching cards: {progress.done}/{progress.total}
-              </div>
-            ) : null}
             {deck ? (
               <div className="text-sm text-muted-foreground">
                 Current deck: <span className="text-foreground">{deck.entries.reduce((s, e) => s + e.count, 0)}</span>{" "}
@@ -192,6 +189,27 @@ export function ImportTab({
               </div>
             ) : null}
           </div>
+
+          {isImporting ? (
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="font-medium">Import in progress</span>
+                <span className="text-muted-foreground">{progressPercent}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                <div
+                  className="h-2 rounded bg-primary transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  Fetching card data from Scryfall: {progress.done}/{progress.total}
+                </span>
+                <span>Please keep this tab open</span>
+              </div>
+            </div>
+          ) : null}
 
           {errors.length ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">

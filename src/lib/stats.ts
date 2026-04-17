@@ -37,10 +37,8 @@ export function isRamp(card: ScryfallCard) {
   if (isLand(card)) return false;
   const text = (card.oracle_text ?? "").toLowerCase();
 
-  // "Add {G}" / "Add two mana..." etc.
   if (/\badd\b/.test(text) && text.includes("{")) return true;
 
-  // "Search your library for a land card..."
   if (
     text.includes("search your library") &&
     text.includes("land card") &&
@@ -50,7 +48,6 @@ export function isRamp(card: ScryfallCard) {
     return true;
   }
 
-  // Common ramp-ish artifacts: treasures, mana rocks.
   if (text.includes("treasure token")) return true;
 
   return false;

@@ -22,20 +22,12 @@ export type ParsedLine = {
   raw: string;
 };
 
-/**
- * Normalizes pasted decklist card names so lookups match Scryfall:
- * - "3 Swamps" / "3 swamps" → count 3, name "Swamp" (plural basics → singular)
- * - "4 Swamp (MID) 123" → "Swamp" (strip Arena-style set + collector #)
- */
 export function normalizeDecklistCardName(raw: string): string {
   let s = raw.trim();
-  // Arena / some exporters: "Name (SET) 123" or "Name (SET) *F* 123"
   s = s.replace(/\s*\([A-Za-z0-9]{3,5}\)\s*(\*F\*\s*)?\d+\s*$/i, "").trim();
-  // Trailing foil / promo markers sometimes left behind
   s = s.replace(/\s+\*F\*$/i, "").trim();
 
   const lower = s.toLowerCase();
-  // English plurals that are not the printed card name (Plains is already correct)
   const pluralBasics: Record<string, string> = {
     swamps: "Swamp",
     islands: "Island",
