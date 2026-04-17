@@ -29,6 +29,7 @@ export function ProbabilitiesTab({
 }) {
   const rows = React.useMemo(() => computeProbabilities(deck, tagMap), [deck, tagMap]);
   const [query, setQuery] = React.useState("");
+  const taggedCards = Object.keys(tagMap).length;
 
   const visibleEntries = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,6 +55,17 @@ export function ProbabilitiesTab({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+        <div className="font-medium text-foreground">How tags affect probabilities</div>
+        <div className="mt-1">
+          Manual tags are merged with automatic heuristics. Tagging cards directly
+          makes ramp/interaction/draw/wincon odds more accurate for your list.
+        </div>
+        <div className="mt-2 text-xs">
+          Currently tagged cards: <span className="font-medium text-foreground">{taggedCards}</span>
+        </div>
+      </div>
+
       <Table>
         <TableHeader>
           <TableRow>

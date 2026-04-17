@@ -15,6 +15,7 @@ export type ScryfallCard = {
   color_identity: string[];
   oracle_text?: string;
   image_url?: string;
+  image_url_large?: string;
 };
 
 type CacheRecord = {
@@ -22,7 +23,7 @@ type CacheRecord = {
   card: ScryfallCard;
 };
 
-const STORAGE_KEY = "scry:scryfall-cache:v1";
+const STORAGE_KEY = "scry:scryfall-cache:v2";
 
 let memoryCache: Map<string, CacheRecord> | null = null;
 
@@ -60,21 +61,26 @@ function writeStorage(next: Record<string, CacheRecord>) {
 export function getCachedCardByName(name: string): ScryfallCard | null {
   const key = normalizeKey(name);
   const mem = getMemoryCache().get(key);
-  if (mem) return mem.card;
+  if (mem) {
+    // Old cache records may not include image fields.
+    if (!mem.card.image_url && !mem.card.image_url_large) return null;
+    return mem.card;
+  }
 
   const store = readStorage();
   const rec = store[key];
   if (!rec) return null;
+  if (!rec.card.image_url && !rec.card.image_url_large) return null;
   getMemoryCache().set(key, rec);
   return rec.card;
 }
 
 function cardFromScryfallJson(json: any): ScryfallCard {
-  const faceImage =
+  const faceImageUris =
     Array.isArray(json.card_faces) && json.card_faces.length > 0
-      ? json.card_faces.find((f: any) => f?.image_uris?.normal)?.image_uris
-          ?.normal
+      ? json.card_faces.find((f: any) => f?.image_uris)?.image_uris
       : undefined;
+  const imageUris = json.image_uris ?? {};
 
   return {
     id: String(json.id),
@@ -86,11 +92,28 @@ function cardFromScryfallJson(json: any): ScryfallCard {
       ? json.color_identity.map((c: unknown) => String(c))
       : [],
     oracle_text: json.oracle_text ? String(json.oracle_text) : undefined,
-    image_url: json.image_uris?.normal
-      ? String(json.image_uris.normal)
-      : faceImage
-        ? String(faceImage)
-        : undefined,
+    image_url: imageUris.png
+      ? String(imageUris.png)
+      : imageUris.large
+        ? String(imageUris.large)
+        : imageUris.normal
+          ? String(imageUris.normal)
+          : faceImageUris?.png
+            ? String(faceImageUris.png)
+            : faceImageUris?.large
+              ? String(faceImageUris.large)
+              : faceImageUris?.normal
+                ? String(faceImageUris.normal)
+                : undefined,
+    image_url_large: imageUris.png
+      ? String(imageUris.png)
+      : imageUris.large
+        ? String(imageUris.large)
+        : faceImageUris?.png
+          ? String(faceImageUris.png)
+          : faceImageUris?.large
+            ? String(faceImageUris.large)
+            : undefined,
   };
 }
 

@@ -38,6 +38,7 @@ export function HandTab({
   const [library, setLibrary] = React.useState<ScryfallCard[]>([]);
   const [hand, setHand] = React.useState<ScryfallCard[]>([]);
   const [handSize, setHandSize] = React.useState(7);
+  const [hoveredCard, setHoveredCard] = React.useState<ScryfallCard | null>(null);
 
   const newHand = React.useCallback(
     (size = handSize) => {
@@ -54,6 +55,7 @@ export function HandTab({
     const shuffled = shuffle(fullDeck);
     setLibrary(shuffled.slice(start));
     setHand(shuffled.slice(0, start));
+    setHoveredCard(shuffled[0] ?? null);
   }, [fullDeck]);
 
   const drawCard = () => {
@@ -126,14 +128,16 @@ export function HandTab({
                       marginLeft: idx === 0 ? 0 : -54,
                       transform: `translateY(${lift}px) rotate(${angle}deg)`,
                     }}
+                    onMouseEnter={() => setHoveredCard(card)}
                   >
                     <div className="w-[170px] overflow-hidden rounded-xl border bg-card shadow-md">
-                      {card.image_url ? (
+                      {card.image_url_large || card.image_url ? (
                         <img
-                          src={card.image_url}
+                          src={card.image_url_large || card.image_url}
                           alt={card.name}
-                          className="h-[238px] w-full object-cover"
+                          className="h-[238px] w-full object-cover [transform:translateZ(0)]"
                           loading="lazy"
+                          draggable={false}
                         />
                       ) : (
                         <div className="flex h-[238px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
@@ -147,23 +151,49 @@ export function HandTab({
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {hand.map((card, idx) => (
-              <div
-                key={`${card.id}-meta-${idx}`}
-                className="rounded-lg border bg-muted/30 px-3 py-2"
-              >
-                <div className="truncate text-sm font-medium">{card.name}</div>
-                <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                  <Badge variant="secondary" className="font-normal">
-                    {card.mana_cost || "No cost"}
-                  </Badge>
-                  <Badge variant="outline" className="font-normal">
-                    {card.type_line}
-                  </Badge>
+          <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {hand.map((card, idx) => (
+                <div
+                  key={`${card.id}-meta-${idx}`}
+                  className="rounded-lg border bg-muted/30 px-3 py-2"
+                >
+                  <div className="truncate text-sm font-medium">{card.name}</div>
+                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                    <Badge variant="secondary" className="font-normal">
+                      {card.mana_cost || "No cost"}
+                    </Badge>
+                    <Badge variant="outline" className="font-normal">
+                      {card.type_line}
+                    </Badge>
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-2">
+              {hoveredCard?.image_url_large || hoveredCard?.image_url ? (
+                <img
+                  src={hoveredCard?.image_url_large || hoveredCard?.image_url}
+                  alt={hoveredCard?.name ?? "Card preview"}
+                  className="mx-auto h-auto max-h-[480px] w-auto rounded-md border object-contain"
+                />
+              ) : (
+                <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+                  Hover a card to preview
+                </div>
+              )}
+              <div className="mt-2 text-sm">
+                <div className="font-medium">
+                  {hoveredCard?.name ?? "Card preview"}
+                </div>
+                {hoveredCard ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {hoveredCard.type_line}
+                  </div>
+                ) : null}
               </div>
-            ))}
+            </div>
           </div>
         </CardContent>
       </Card>

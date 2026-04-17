@@ -71,6 +71,22 @@ export function isInteraction(card: ScryfallCard) {
   return patterns.some((p) => p.test(text));
 }
 
+export function isCardDraw(card: ScryfallCard) {
+  if (isLand(card)) return false;
+  const text = (card.oracle_text ?? "").toLowerCase();
+  return /\bdraw (a|two|three|x|\d+) card/.test(text) || text.includes("draw a card");
+}
+
+export function isWinconHeuristic(card: ScryfallCard) {
+  if (isLand(card)) return false;
+  const text = (card.oracle_text ?? "").toLowerCase();
+  return (
+    text.includes("you win the game") ||
+    text.includes("each opponent loses the game") ||
+    text.includes("commander damage")
+  );
+}
+
 export type DeckStats = {
   totalCards: number;
   uniqueCards: number;

@@ -158,14 +158,21 @@ export function ImportTab({
             <Label htmlFor="decklist">Decklist</Label>
             <Textarea
               id="decklist"
-              placeholder={"Example:\n1 Sol Ring\n1 Command Tower\n1 Swords to Plowshares"}
+              placeholder={
+                "Paste Moxfield plain text export here.\nExample:\n1 Sol Ring\n1 Command Tower\n1 Swords to Plowshares"
+              }
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="min-h-48"
             />
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="secondary">Moxfield: Copy → Plain Text</Badge>
               <Badge variant="secondary">1 card per line</Badge>
               <Badge variant="secondary">Optional leading count</Badge>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Best results: in Moxfield, use the plain text export/import format
+              (one card per line, e.g. <span className="font-mono">1 Sol Ring</span>).
             </div>
           </div>
 

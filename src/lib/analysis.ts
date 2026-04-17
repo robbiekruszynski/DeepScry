@@ -10,6 +10,8 @@ import {
   isPlaneswalker,
   isRamp,
   isSorcery,
+  isCardDraw,
+  isWinconHeuristic,
 } from "@/lib/stats";
 
 export function countCards(deck: Deck, pred: (card: ScryfallCard) => boolean) {
@@ -60,7 +62,20 @@ export function colorIdentityCounts(deck: Deck) {
     R: 0,
     G: 0,
   };
+
   for (const e of deck.entries) {
+    const manaCost = e.card.mana_cost ?? "";
+    const symbols = manaCost.match(/\{([WUBRG])\}/g) ?? [];
+
+    if (symbols.length > 0) {
+      for (const token of symbols) {
+        const c = token.replace(/[{}]/g, "") as keyof typeof counts;
+        counts[c] += e.count;
+      }
+      continue;
+    }
+
+    // Fallback for cards without mana cost text (lands, MDFC faces, etc.)
     for (const c of e.card.color_identity) {
       if (c in counts) counts[c as keyof typeof counts] += e.count;
     }
@@ -127,10 +142,21 @@ export type ProbabilityRow = {
   probability: number;
 };
 
-function countByTag(deck: Deck, tagMap: CardTagMap, tag: "ramp" | "interaction") {
+function countByTag(
+  deck: Deck,
+  tagMap: CardTagMap,
+  tag: "ramp" | "interaction" | "draw" | "wincon"
+) {
   return deck.entries.reduce((sum, e) => {
     const tagged = (tagMap[e.card.id] ?? []).includes(tag);
-    const heuristic = tag === "ramp" ? isRamp(e.card) : isInteraction(e.card);
+    const heuristic =
+      tag === "ramp"
+        ? isRamp(e.card)
+        : tag === "interaction"
+          ? isInteraction(e.card)
+          : tag === "draw"
+            ? isCardDraw(e.card)
+            : isWinconHeuristic(e.card);
     return sum + (tagged || heuristic ? e.count : 0);
   }, 0);
 }
@@ -144,16 +170,8 @@ export function computeProbabilities(
   const lands = countCards(deck, isLand);
   const ramps = countByTag(deck, tagMap, "ramp");
   const interactions = countByTag(deck, tagMap, "interaction");
-  const commanderCopies = deck.commanderName
-    ? deck.entries.reduce(
-        (sum, e) =>
-          sum +
-          (e.card.name.toLowerCase() === deck.commanderName!.toLowerCase()
-            ? e.count
-            : 0),
-        0
-      )
-    : 0;
+  const draws = countByTag(deck, tagMap, "draw");
+  const wincons = countByTag(deck, tagMap, "wincon");
 
   return [
     {
@@ -173,12 +191,16 @@ export function computeProbabilities(
       probability: hypergeometricAtLeast(n, ramps, hand, 1),
     },
     {
-      label: "Commander in opening 7",
-      probability: hypergeometricAtLeast(n, commanderCopies, hand, 1),
-    },
-    {
       label: "At least 1 piece of interaction in 7",
       probability: hypergeometricAtLeast(n, interactions, hand, 1),
+    },
+    {
+      label: "At least 1 card draw piece in 7",
+      probability: hypergeometricAtLeast(n, draws, hand, 1),
+    },
+    {
+      label: "At least 1 win condition in 7",
+      probability: hypergeometricAtLeast(n, wincons, hand, 1),
     },
   ];
 }

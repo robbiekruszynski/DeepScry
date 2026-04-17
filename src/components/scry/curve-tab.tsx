@@ -45,22 +45,22 @@ const MANA_CURVE_COLORS = [
 
 /** Lands → Planeswalkers: distinct hues */
 const TYPE_COLORS = [
-  "#22c55e",
-  "#3b82f6",
-  "#60a5fa",
-  "#a855f7",
-  "#78716c",
-  "#ec4899",
-  "#eab308",
+  "#16a34a",
+  "#2563eb",
+  "#7c3aed",
+  "#db2777",
+  "#6b7280",
+  "#d97706",
+  "#dc2626",
 ];
 const TYPE_COLORS_DARK = [
-  "#ffffff",
-  "#f1f5f9",
-  "#e2e8f0",
-  "#cbd5e1",
-  "#94a3b8",
-  "#f8fafc",
-  "#dbeafe",
+  "#4ade80",
+  "#60a5fa",
+  "#c084fc",
+  "#f472b6",
+  "#9ca3af",
+  "#fbbf24",
+  "#f87171",
 ];
 
 /** Classic WUBRG (W uses warm gold so it reads on light + dark UI) */
