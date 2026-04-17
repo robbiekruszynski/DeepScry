@@ -41,6 +41,31 @@ export function normalizeDecklistCardName(raw: string): string {
   return s;
 }
 
+/**
+ * Some exports repeat the quantity ("1 1 Terra, Magical Adept") so the name field still starts
+ * with digits. Strip leading single-digit quantities (1–9) until the remainder looks like a name.
+ * We only strip single-digit counts to avoid eating years like "1996" in card names.
+ */
+export function stripDuplicateLeadingCounts(name: string): string {
+  let s = name.trim();
+  let prev = "";
+  while (s !== prev) {
+    prev = s;
+    // ASCII 1–9 or fullwidth １–９ (some exports use Unicode digits)
+    const m = s.match(/^([1-9\uFF11-\uFF19])\s+(.+)$/u);
+    if (!m || m[2].length < 1) break;
+    s = m[2].trim();
+  }
+  return s;
+}
+
+/** Single place to clean a user-supplied card title before Scryfall (deck lines, commander, cache keys). */
+export function normalizeCardNameForImport(raw: string): string {
+  const once = normalizeDecklistCardName(raw);
+  const stripped = stripDuplicateLeadingCounts(once);
+  return normalizeDecklistCardName(stripped);
+}
+
 export function parseDecklist(text: string): {
   lines: ParsedLine[];
   errors: string[];
@@ -58,9 +83,10 @@ export function parseDecklist(text: string): {
     if (raw.startsWith("#") || raw.startsWith("//")) continue;
     if (/^(sideboard|maybeboard)\b/i.test(raw)) continue;
 
-    const m = raw.match(/^(\d+)\s+(.+)$/);
+    const m =
+      raw.match(/^(\d+)\s+(.+)$/) ?? raw.match(/^(\d+)x\s+(.+)$/i);
     const count = m ? Number(m[1]) : 1;
-    const name = normalizeDecklistCardName(m ? m[2] : raw);
+    const name = normalizeCardNameForImport(m ? m[2] : raw);
 
     if (!name) {
       errors.push(`Could not parse line: "${raw}"`);

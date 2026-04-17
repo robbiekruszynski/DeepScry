@@ -1,3 +1,4 @@
+import { normalizeCardNameForImport } from "@/lib/deck";
 import {
   createAsyncQueue,
   delay,
@@ -212,7 +213,8 @@ export async function resolveNamesForDeckImport(
   const uncached: string[] = [];
   let cacheHits = 0;
   for (const name of uniqueNames) {
-    const hit = getCachedCardByName(name);
+    const n = normalizeCardNameForImport(name);
+    const hit = getCachedCardByName(n) ?? getCachedCardByName(name);
     if (hit) {
       out.set(name, hit);
       done += 1;
@@ -244,10 +246,15 @@ export async function resolveNamesForDeckImport(
       const batchTotal = Math.ceil(uncached.length / COLLECTION_CHUNK);
       report(`Bulk lookup batch ${batchNum}/${batchTotal} (${chunk.length} cards)…`);
 
+      const pairs = chunk.map((original) => ({
+        original,
+        n: normalizeCardNameForImport(original),
+      }));
+
       const res = await fetch(collectionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ names: chunk }),
+        body: JSON.stringify({ names: pairs.map((p) => p.n) }),
         cache: "no-store",
       });
       const raw = await res.text();
@@ -285,20 +292,20 @@ export async function resolveNamesForDeckImport(
       );
 
       let matchedInChunk = 0;
-      for (const requested of chunk) {
-        const key = normalizeKey(requested);
+      for (const { original, n } of pairs) {
+        const key = normalizeKey(n);
         if (notFoundSet.has(key)) {
-          stillNeedFuzzy.push(requested);
+          stillNeedFuzzy.push(original);
           continue;
         }
         const card = byNorm.get(key);
         if (card) {
-          persistCache(requested, card);
-          out.set(requested, card);
+          persistCache(original, card);
+          out.set(original, card);
           done += 1;
           matchedInChunk += 1;
         } else {
-          stillNeedFuzzy.push(requested);
+          stillNeedFuzzy.push(original);
         }
       }
       report(
@@ -310,11 +317,12 @@ export async function resolveNamesForDeckImport(
   }
 
   for (const name of stillNeedFuzzy) {
-    report(`Looking up: ${name}…`);
+    const n = normalizeCardNameForImport(name);
+    report(`Looking up: ${n}…`);
     const card = await fetchCardByNameFuzzy(name);
     out.set(name, card);
     done += 1;
-    report(`Resolved: ${name}`);
+    report(`Resolved: ${n}`);
   }
 
   report("Import data ready.");
@@ -322,7 +330,8 @@ export async function resolveNamesForDeckImport(
 }
 
 export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> {
-  const cached = getCachedCardByName(name);
+  const n = normalizeCardNameForImport(name);
+  const cached = getCachedCardByName(n) ?? getCachedCardByName(name);
   if (cached) return cached;
 
   return enqueueScryfall(async () => {
@@ -332,8 +341,8 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
     }
 
     const url = useProxy
-      ? `/api/scryfall/card?fuzzy=${encodeURIComponent(name)}`
-      : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
+      ? `/api/scryfall/card?fuzzy=${encodeURIComponent(n)}`
+      : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(n)}`;
 
     let payload = await fetchCardPayload(url);
 
@@ -371,6 +380,7 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
 
     const card = cardFromScryfallJson(json);
     persistCache(name, card);
+    persistCache(n, card);
 
     return card;
   });
