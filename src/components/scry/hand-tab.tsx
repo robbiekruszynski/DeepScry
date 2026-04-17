@@ -34,7 +34,17 @@ export function HandTab({
   deck: Deck;
   tagMap: CardTagMap;
 }) {
-  const fullDeck = React.useMemo(() => expandDeck(deck), [deck]);
+  const fullDeck = React.useMemo(() => {
+    const expanded = expandDeck(deck);
+    if (!deck.commanderName) return expanded;
+
+    const commanderIdx = expanded.findIndex(
+      (c) => c.name.toLowerCase() === deck.commanderName!.toLowerCase()
+    );
+    if (commanderIdx < 0) return expanded;
+
+    return [...expanded.slice(0, commanderIdx), ...expanded.slice(commanderIdx + 1)];
+  }, [deck]);
   const [library, setLibrary] = React.useState<ScryfallCard[]>([]);
   const [hand, setHand] = React.useState<ScryfallCard[]>([]);
   const [handSize, setHandSize] = React.useState(7);

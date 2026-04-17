@@ -22,14 +22,20 @@ async function fetchFromScryfall(url: string) {
 
 export async function GET(req: NextRequest) {
   const fuzzy = req.nextUrl.searchParams.get("fuzzy")?.trim();
-  if (!fuzzy) {
-    return NextResponse.json({ error: "Missing fuzzy query parameter." }, { status: 400 });
+  const id = req.nextUrl.searchParams.get("id")?.trim();
+  if (!fuzzy && !id) {
+    return NextResponse.json(
+      { error: "Missing fuzzy or id query parameter." },
+      { status: 400 }
+    );
   }
 
   return enqueue(async () => {
     await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
 
-    const url = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy)}`;
+    const url = id
+      ? `https://api.scryfall.com/cards/${encodeURIComponent(id)}`
+      : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy!)}`;
     let { res, text } = await fetchFromScryfall(url);
 
     if (res.status === 429) {

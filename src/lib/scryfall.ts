@@ -9,6 +9,7 @@ import {
 export type ScryfallCard = {
   id: string;
   name: string;
+  scryfall_uri?: string;
   mana_cost: string | null;
   cmc: number;
   type_line: string;
@@ -16,6 +17,13 @@ export type ScryfallCard = {
   oracle_text?: string;
   image_url?: string;
   image_url_large?: string;
+  price_usd?: number | null;
+  price_updated_at?: number;
+  purchase_uris?: {
+    tcgplayer?: string;
+    cardmarket?: string;
+    cardhoarder?: string;
+  };
 };
 
 type CacheRecord = {
@@ -83,6 +91,7 @@ function cardFromScryfallJson(json: any): ScryfallCard {
   return {
     id: String(json.id),
     name: String(json.name),
+    scryfall_uri: json.scryfall_uri ? String(json.scryfall_uri) : undefined,
     mana_cost: json.mana_cost ? String(json.mana_cost) : null,
     cmc: Number(json.cmc ?? 0),
     type_line: String(json.type_line ?? ""),
@@ -112,6 +121,22 @@ function cardFromScryfallJson(json: any): ScryfallCard {
           : faceImageUris?.large
             ? String(faceImageUris.large)
             : undefined,
+    price_usd:
+      json?.prices?.usd !== undefined && json?.prices?.usd !== null
+        ? Number(json.prices.usd)
+        : null,
+    price_updated_at: Date.now(),
+    purchase_uris: {
+      tcgplayer: json?.purchase_uris?.tcgplayer
+        ? String(json.purchase_uris.tcgplayer)
+        : undefined,
+      cardmarket: json?.purchase_uris?.cardmarket
+        ? String(json.purchase_uris.cardmarket)
+        : undefined,
+      cardhoarder: json?.purchase_uris?.cardhoarder
+        ? String(json.purchase_uris.cardhoarder)
+        : undefined,
+    },
   };
 }
 
@@ -206,6 +231,34 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
     const card = cardFromScryfallJson(json);
     persistCache(name, card);
 
+    return card;
+  });
+}
+
+export async function fetchCardById(cardId: string): Promise<ScryfallCard> {
+  const useProxy = typeof window !== "undefined";
+  const url = useProxy
+    ? `/api/scryfall/card?id=${encodeURIComponent(cardId)}`
+    : `https://api.scryfall.com/cards/${encodeURIComponent(cardId)}`;
+
+  return enqueueScryfall(async () => {
+    await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+    let payload = await fetchCardPayload(url);
+    if (payload.status === 429) {
+      const retryMs = Math.max(
+        parseRetryAfterMs(payload.retryAfter) ?? 60_000,
+        60_000
+      );
+      await delay(retryMs);
+      await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+      payload = await fetchCardPayload(url);
+    }
+    if (!payload.ok) {
+      throw new Error(`Scryfall fetch failed (${payload.status})`);
+    }
+    const json = JSON.parse(payload.text);
+    const card = cardFromScryfallJson(json);
+    persistCache(card.name, card);
     return card;
   });
 }

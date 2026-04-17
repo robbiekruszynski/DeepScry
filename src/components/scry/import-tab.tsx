@@ -40,8 +40,35 @@ export function ImportTab({
     { done: 0, total: 0 }
   );
   const [errors, setErrors] = React.useState<string[]>([]);
+  const [copyStatus, setCopyStatus] = React.useState<"idle" | "copied" | "error">(
+    "idle"
+  );
   const progressPercent =
     progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("scry:import-draft:v1");
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as {
+        text?: string;
+        commanderName?: string;
+        archetype?: DeckArchetype;
+      };
+      if (parsed.text) setText(parsed.text);
+      if (parsed.commanderName) setCommanderName(parsed.commanderName);
+      if (parsed.archetype) setArchetype(parsed.archetype);
+    } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "scry:import-draft:v1",
+        JSON.stringify({ text, commanderName, archetype })
+      );
+    } catch {}
+  }, [text, commanderName, archetype]);
 
   async function runImport(): Promise<ImportResult> {
     const parsed = parseDecklist(text);
@@ -63,6 +90,9 @@ export function ImportTab({
       cardsByRequestedName.set(name, card);
       done += 1;
       setProgress({ done, total: uniqueNames.length });
+      if (done % 3 === 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
     }
 
     const { entries, missingNames } = buildEntries(cardsByRequestedName, parsed.lines);
@@ -120,6 +150,18 @@ export function ImportTab({
       onDeckChange(null);
     } finally {
       setIsImporting(false);
+    }
+  }
+
+  async function onCopyClick() {
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    } finally {
+      setTimeout(() => setCopyStatus("idle"), 1800);
     }
   }
 
@@ -182,6 +224,17 @@ export function ImportTab({
             <Button onClick={onImportClick} disabled={isImporting || !text.trim()}>
               {isImporting ? "Importing…" : "Import"}
             </Button>
+            <Button
+              variant="outline"
+              onClick={onCopyClick}
+              disabled={!text.trim() || isImporting}
+            >
+              {copyStatus === "copied"
+                ? "Copied"
+                : copyStatus === "error"
+                  ? "Copy failed"
+                  : "Copy decklist"}
+            </Button>
             {deck ? (
               <div className="text-sm text-muted-foreground">
                 Current deck: <span className="text-foreground">{deck.entries.reduce((s, e) => s + e.count, 0)}</span>{" "}
@@ -207,6 +260,10 @@ export function ImportTab({
                   Fetching card data from Scryfall: {progress.done}/{progress.total}
                 </span>
                 <span>Please keep this tab open</span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                First import can take a while. If refreshed, cached cards are reused and import will
+                resume faster.
               </div>
             </div>
           ) : null}

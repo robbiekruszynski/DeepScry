@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import type { CardTagMap, Deck } from "@/lib/deck";
+import { BudgetTuner } from "@/components/scry/budget-tuner";
 import {
   deckHealthWarnings,
   deckBenchmarkScores,
@@ -268,6 +269,8 @@ export function OverviewTab({
           ))}
         </CardContent>
       </Card>
+
+      <BudgetTuner deck={deck} />
     </div>
   );
 }

@@ -8,7 +8,6 @@ import { HandTab } from "@/components/scry/hand-tab";
 import { ImportTab } from "@/components/scry/import-tab";
 import { OverviewTab } from "@/components/scry/overview-tab";
 import { ProbabilitiesTab } from "@/components/scry/probabilities-tab";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,12 +38,7 @@ export function ScryApp() {
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <div className="truncate text-lg font-semibold tracking-tight">
-                Scry
-              </div>
-              <Badge variant="secondary">Commander deck analyzer</Badge>
-            </div>
+            <div className="truncate text-2xl font-bold tracking-tight">Scry</div>
             <div className="mt-1 text-sm text-muted-foreground">
               Import a decklist, simulate hands, and inspect curve, colors, and
               probabilities.
