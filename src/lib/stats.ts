@@ -76,10 +76,26 @@ export function isCardDraw(card: ScryfallCard) {
 
 export function isWinconHeuristic(card: ScryfallCard) {
   if (isLand(card)) return false;
+  const name = card.name.toLowerCase();
   const text = (card.oracle_text ?? "").toLowerCase();
+
+  const knownWincons = [
+    "approach of the second sun",
+    "bitter ordeal",
+    "exquisite blood",
+    "laboratory maniac",
+    "revel in riches",
+    "thassa's oracle",
+  ];
+
+  if (knownWincons.includes(name)) return true;
+
   return (
     text.includes("you win the game") ||
-    text.includes("each opponent loses the game") ||
+    text.includes("loses the game") ||
+    text.includes("lose the game") ||
+    text.includes("damage to each opponent") ||
+    /\b(?:each |target )?opponent loses (?:x|\d+|that much) life\b/.test(text) ||
     text.includes("commander damage")
   );
 }

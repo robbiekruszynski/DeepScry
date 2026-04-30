@@ -11,13 +11,30 @@ import {
 const enqueue = createAsyncQueue();
 
 async function fetchFromScryfall(url: string) {
-  const res = await fetch(url, {
-    method: "GET",
-    headers: scryfallFetchHeaders(),
-    cache: "no-store",
-  });
-  const text = await res.text();
-  return { res, text };
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: scryfallFetchHeaders(),
+      cache: "no-store",
+    });
+    const text = await res.text();
+    return { res, text };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      res: {
+        ok: false,
+        status: 503,
+        statusText: "Scryfall unavailable",
+        headers: new Headers(),
+      } as Response,
+      text: `Unable to reach Scryfall. Check your internet connection and try again. (${message})`,
+    };
+  }
+}
+
+async function retryAfterBackoff(attempt: number) {
+  await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS * (attempt + 2));
 }
 
 export async function GET(req: NextRequest) {
@@ -45,6 +62,11 @@ export async function GET(req: NextRequest) {
       );
       await delay(retryMs);
       await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+      ({ res, text } = await fetchFromScryfall(url));
+    }
+
+    for (let attempt = 0; !res.ok && res.status >= 500 && attempt < 2; attempt++) {
+      await retryAfterBackoff(attempt);
       ({ res, text } = await fetchFromScryfall(url));
     }
 

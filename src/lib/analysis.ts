@@ -172,7 +172,7 @@ export function computeProbabilities(
   const draws = countByTag(deck, tagMap, "draw");
   const wincons = countByTag(deck, tagMap, "wincon");
 
-  return [
+  const rows: ProbabilityRow[] = [
     {
       label: "At least 2 lands in opening 7",
       probability: hypergeometricAtLeast(n, lands, hand, 2),
@@ -197,10 +197,15 @@ export function computeProbabilities(
       label: "At least 1 card draw piece in 7",
       probability: hypergeometricAtLeast(n, draws, hand, 1),
     },
-    {
+  ];
+
+  if (wincons > 0) {
+    rows.push({
       label: "At least 1 win condition in 7",
       probability: hypergeometricAtLeast(n, wincons, hand, 1),
-    },
-  ];
+    });
+  }
+
+  return rows;
 }
 

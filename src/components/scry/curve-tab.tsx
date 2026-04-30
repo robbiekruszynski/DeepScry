@@ -62,6 +62,13 @@ const TYPE_COLORS_DARK = [
 ];
 
 const WUBRG_COLORS = ["#fcd34d", "#2563eb", "#57534e", "#ef4444", "#16a34a"];
+const MANA_PIPS = [
+  { color: "W", src: "https://svgs.scryfall.io/card-symbols/W.svg", label: "White" },
+  { color: "U", src: "https://svgs.scryfall.io/card-symbols/U.svg", label: "Blue" },
+  { color: "B", src: "https://svgs.scryfall.io/card-symbols/B.svg", label: "Black" },
+  { color: "R", src: "https://svgs.scryfall.io/card-symbols/R.svg", label: "Red" },
+  { color: "G", src: "https://svgs.scryfall.io/card-symbols/G.svg", label: "Green" },
+];
 
 const chartBorder = {
   borderColor: "rgba(15, 23, 42, 0.25)",
@@ -109,6 +116,8 @@ export function CurveTab({ deck }: { deck: Deck }) {
       },
     },
   };
+  const colorValues = [colors.W, colors.U, colors.B, colors.R, colors.G];
+  const maxColorValue = Math.max(...colorValues, 1);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -169,21 +178,42 @@ export function CurveTab({ deck }: { deck: Deck }) {
           <CardTitle>Color identity count</CardTitle>
         </CardHeader>
         <CardContent>
-          <Bar
-            data={{
-              labels: ["W", "U", "B", "R", "G"],
-              datasets: [
-                {
-                  label: "Symbols",
-                  data: [colors.W, colors.U, colors.B, colors.R, colors.G],
-                  backgroundColor: WUBRG_COLORS,
-                  ...chartBorder,
-                },
-              ],
-            }}
-            options={barOptions}
-            height={240}
-          />
+          <div
+            className="grid h-[260px] grid-cols-5 items-end gap-3 rounded-lg border bg-muted/10 px-4 pb-4 pt-6"
+            aria-label="Color identity count"
+          >
+            {MANA_PIPS.map((pip, idx) => {
+              const value = colorValues[idx] ?? 0;
+              const height = value > 0 ? Math.max(10, (value / maxColorValue) * 170) : 4;
+
+              return (
+                <div key={pip.color} className="flex h-full flex-col items-center justify-end gap-2">
+                  <div className="text-sm font-medium tabular-nums">{value}</div>
+                  <div className="flex h-[170px] w-full items-end justify-center">
+                    <div
+                      className="w-full max-w-14 rounded-t-md border border-slate-950/20 transition-[height] duration-300"
+                      style={{
+                        height,
+                        backgroundColor: WUBRG_COLORS[idx],
+                      }}
+                      title={`${pip.label}: ${value}`}
+                    />
+                  </div>
+                  <img
+                    src={pip.src}
+                    alt={`${pip.label} mana`}
+                    className="h-5 w-5"
+                    height={20}
+                    width={20}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            Counts include colored mana symbols in mana costs, falling back to color identity for
+            cards without a colored mana cost.
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -162,6 +162,9 @@ function headersForFetchUrl(url: string): HeadersInit {
   if (typeof window !== "undefined" && url.startsWith("/api")) {
     return { Accept: "application/json" };
   }
+  if (typeof window !== "undefined") {
+    return { Accept: "application/json" };
+  }
   return scryfallFetchHeaders();
 }
 
@@ -171,18 +174,102 @@ async function fetchCardPayload(url: string): Promise<{
   text: string;
   retryAfter: string | null;
 }> {
-  const res = await fetch(url, {
-    method: "GET",
-    headers: headersForFetchUrl(url),
-    cache: "no-store",
-  });
-  const text = await res.text().catch(() => "");
-  return {
-    ok: res.ok,
-    status: res.status,
-    text,
-    retryAfter: res.headers.get("Retry-After"),
-  };
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: headersForFetchUrl(url),
+      cache: "no-store",
+    });
+    const text = await res.text().catch(() => "");
+    return {
+      ok: res.ok,
+      status: res.status,
+      text,
+      retryAfter: res.headers.get("Retry-After"),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      status: 503,
+      text: `Unable to reach Scryfall. Check your internet connection and try again. (${message})`,
+      retryAfter: null,
+    };
+  }
+}
+
+async function fetchCardPayloadWithRetry(url: string) {
+  let payload = await fetchCardPayload(url);
+  for (let attempt = 0; !payload.ok && payload.status >= 500 && attempt < 2; attempt++) {
+    await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS * (attempt + 2));
+    payload = await fetchCardPayload(url);
+  }
+  return payload;
+}
+
+function isHtmlErrorPage(text: string) {
+  const sample = text.slice(0, 1000).toLowerCase();
+  return sample.includes("<!doctype html") || sample.includes("<html") || sample.includes("__next_data__");
+}
+
+async function postCollectionPayload(names: string[], url: string) {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ names }),
+      cache: "no-store",
+    });
+    return { ok: res.ok, status: res.status, text: await res.text() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      status: 503,
+      text: `Unable to reach Scryfall. Check your internet connection and try again. (${message})`,
+    };
+  }
+}
+
+async function postScryfallCollectionDirect(names: string[]) {
+  try {
+    const res = await fetch("https://api.scryfall.com/cards/collection", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ identifiers: names.map((name) => ({ name })) }),
+      cache: "no-store",
+    });
+    return { ok: res.ok, status: res.status, text: await res.text() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      status: 503,
+      text: `Unable to reach Scryfall. Check your internet connection and try again. (${message})`,
+    };
+  }
+}
+
+function errorDetailFromPayload(payload: { status: number; text: string }) {
+  if (isHtmlErrorPage(payload.text)) {
+    return "The local Scryfall proxy returned a dev-server error page. Restart the dev server and try again.";
+  }
+
+  try {
+    const errJson = JSON.parse(payload.text) as {
+      details?: string;
+      error?: string;
+    };
+    return errJson?.details || errJson?.error || payload.text || String(payload.status);
+  } catch {
+    return payload.text || String(payload.status);
+  }
 }
 
 const COLLECTION_CHUNK = 75;
@@ -251,17 +338,17 @@ export async function resolveNamesForDeckImport(
         n: normalizeCardNameForImport(original),
       }));
 
-      const res = await fetch(collectionUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ names: pairs.map((p) => p.n) }),
-        cache: "no-store",
-      });
-      const raw = await res.text();
+      const names = pairs.map((p) => p.n);
+      let payload = await postCollectionPayload(names, collectionUrl);
 
-      if (!res.ok) {
+      if (!payload.ok && isHtmlErrorPage(payload.text)) {
+        report(`Local lookup batch ${batchNum} failed; trying Scryfall directly...`);
+        payload = await postScryfallCollectionDirect(names);
+      }
+
+      if (!payload.ok) {
         chunk.forEach((n) => stillNeedFuzzy.push(n));
-        report(`Batch ${batchNum} failed (${res.status}); will try individual lookup…`);
+        report(`Batch ${batchNum} failed (${payload.status}); will try individual lookup...`);
         continue;
       }
 
@@ -270,7 +357,7 @@ export async function resolveNamesForDeckImport(
         not_found?: { name?: string }[];
       };
       try {
-        json = JSON.parse(raw) as typeof json;
+        json = JSON.parse(payload.text) as typeof json;
       } catch {
         chunk.forEach((n) => stillNeedFuzzy.push(n));
         continue;
@@ -344,7 +431,13 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
       ? `/api/scryfall/card?fuzzy=${encodeURIComponent(n)}`
       : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(n)}`;
 
-    let payload = await fetchCardPayload(url);
+    let payload = await fetchCardPayloadWithRetry(url);
+
+    if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+      payload = await fetchCardPayloadWithRetry(
+        `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(n)}`
+      );
+    }
 
     if (payload.status === 429) {
       const retryMs = Math.max(
@@ -355,19 +448,16 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
       if (!useProxy) {
         await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
       }
-      payload = await fetchCardPayload(url);
+      payload = await fetchCardPayloadWithRetry(url);
+      if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+        payload = await fetchCardPayloadWithRetry(
+          `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(n)}`
+        );
+      }
     }
 
     if (!payload.ok) {
-      let detail = payload.text || String(payload.status);
-      try {
-        const errJson = JSON.parse(payload.text) as {
-          details?: string;
-          error?: string;
-        };
-        if (errJson?.details) detail = errJson.details;
-        else if (errJson?.error) detail = errJson.error;
-      } catch {}
+      const detail = errorDetailFromPayload(payload);
       throw new Error(`Scryfall fetch failed (${payload.status}): ${detail}`);
     }
 
@@ -396,7 +486,12 @@ export async function fetchCardById(cardId: string): Promise<ScryfallCard> {
     if (!useProxy) {
       await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
     }
-    let payload = await fetchCardPayload(url);
+    let payload = await fetchCardPayloadWithRetry(url);
+    if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+      payload = await fetchCardPayloadWithRetry(
+        `https://api.scryfall.com/cards/${encodeURIComponent(cardId)}`
+      );
+    }
     if (payload.status === 429) {
       const retryMs = Math.max(
         parseRetryAfterMs(payload.retryAfter) ?? 60_000,
@@ -406,10 +501,15 @@ export async function fetchCardById(cardId: string): Promise<ScryfallCard> {
       if (!useProxy) {
         await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
       }
-      payload = await fetchCardPayload(url);
+      payload = await fetchCardPayloadWithRetry(url);
+      if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+        payload = await fetchCardPayloadWithRetry(
+          `https://api.scryfall.com/cards/${encodeURIComponent(cardId)}`
+        );
+      }
     }
     if (!payload.ok) {
-      throw new Error(`Scryfall fetch failed (${payload.status})`);
+      throw new Error(`Scryfall fetch failed (${payload.status}): ${errorDetailFromPayload(payload)}`);
     }
     const json = JSON.parse(payload.text);
     const card = cardFromScryfallJson(json);

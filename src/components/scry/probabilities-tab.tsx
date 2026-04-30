@@ -61,6 +61,10 @@ export function ProbabilitiesTab({
           Manual tags are combined with automatic card classification. Tagging cards directly
           makes ramp, interaction, draw, and win condition odds match your list more closely.
         </div>
+        <div className="mt-1 text-xs">
+          Win condition odds appear when DeepScry detects a win pattern or when you tag cards as
+          wincons below.
+        </div>
         <div className="mt-2 text-xs">
           Currently tagged cards: <span className="font-medium text-foreground">{taggedCards}</span>
         </div>

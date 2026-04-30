@@ -1,7 +1,7 @@
 export const MIN_MS_BETWEEN_SCRYFALL_REQUESTS = 120;
 
 const SCRYFALL_UA =
-  "Scry/0.1 (https://github.com/robbiekruszynski/Scry; deck analyzer)";
+  "DeepScry/0.1 (https://github.com/robbiekruszynski/Scry; deck analyzer)";
 
 export function scryfallFetchHeaders(): HeadersInit {
   return {

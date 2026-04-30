@@ -10,7 +10,16 @@ import {
   simulateCurveProbabilities,
   colorIdentityViolations,
 } from "@/lib/commander-tools";
-import { computeDeckStats } from "@/lib/stats";
+import {
+  computeDeckStats,
+  isArtifact,
+  isCreature,
+  isEnchantment,
+  isInstant,
+  isLand,
+  isSorcery,
+} from "@/lib/stats";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,10 +60,17 @@ function StatCard({
 export function OverviewTab({
   deck,
   tagMap,
+  onRemoveCard,
+  onEditImport,
+  onStartOver,
 }: {
   deck: Deck;
   tagMap: CardTagMap;
+  onRemoveCard: (cardId: string) => void;
+  onEditImport: () => void;
+  onStartOver: () => void;
 }) {
+  const [isCommanderPreviewOpen, setIsCommanderPreviewOpen] = React.useState(false);
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
   const warnings = React.useMemo(() => deckHealthWarnings(deck), [deck]);
   const benchmarkScores = React.useMemo(() => deckBenchmarkScores(deck), [deck]);
@@ -63,15 +79,136 @@ export function OverviewTab({
     deck,
     tagMap,
   ]);
+  const commanderEntry = React.useMemo(() => {
+    if (!deck.commanderName) return null;
+    const commanderName = deck.commanderName.toLowerCase();
+    return (
+      deck.entries.find((entry) => entry.card.name.toLowerCase() === commanderName) ??
+      null
+    );
+  }, [deck.commanderName, deck.entries]);
+  const groupedDecklist = React.useMemo(() => {
+    const groups = [
+      { label: "Creatures", test: isCreature },
+      { label: "Instants", test: isInstant },
+      { label: "Sorceries", test: isSorcery },
+      { label: "Artifacts", test: isArtifact },
+      { label: "Enchantments", test: isEnchantment },
+      { label: "Lands", test: isLand },
+    ];
+    const assigned = new Set<string>();
+    const out = groups.map((group) => {
+      const entries = deck.entries
+        .filter((entry) => {
+          if (assigned.has(entry.card.id) || !group.test(entry.card)) return false;
+          assigned.add(entry.card.id);
+          return true;
+        })
+        .sort((a, b) => a.card.name.localeCompare(b.card.name));
+
+      return {
+        label: group.label,
+        count: entries.reduce((sum, entry) => sum + entry.count, 0),
+        entries,
+      };
+    });
+    const otherEntries = deck.entries
+      .filter((entry) => !assigned.has(entry.card.id))
+      .sort((a, b) => a.card.name.localeCompare(b.card.name));
+    if (otherEntries.length) {
+      out.push({
+        label: "Other",
+        count: otherEntries.reduce((sum, entry) => sum + entry.count, 0),
+        entries: otherEntries,
+      });
+    }
+    return out.filter((group) => group.entries.length > 0);
+  }, [deck.entries]);
+
+  const commanderPreviewPanel = (
+    <div
+      className="rounded-lg border bg-muted/30 p-2 shadow-sm backdrop-blur-sm"
+      aria-live="polite"
+    >
+      {isCommanderPreviewOpen &&
+      (commanderEntry?.card.image_url_large || commanderEntry?.card.image_url) ? (
+        <div className="space-y-2">
+          <img
+            src={commanderEntry.card.image_url_large || commanderEntry.card.image_url}
+            alt={`${commanderEntry.card.name} preview`}
+            className="mx-auto h-auto max-h-[320px] w-auto rounded-md border object-contain"
+          />
+          <div className="text-sm font-medium">{commanderEntry.card.name}</div>
+          <div className="text-xs text-muted-foreground">{commanderEntry.card.type_line}</div>
+          {commanderEntry.card.scryfall_uri ? (
+            <a
+              href={commanderEntry.card.scryfall_uri}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline-offset-2 hover:underline"
+            >
+              View on Scryfall
+            </a>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex min-h-[180px] items-center justify-center px-2 text-center text-xs text-muted-foreground">
+          Hover the commander to preview.
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <Badge variant="secondary">{stats.uniqueCards} unique</Badge>
-        <Badge variant="secondary">{stats.totalCards} total</Badge>
-        <span className="text-xs">
-          Ramp and interaction are automatically classified from card text and tags.
-        </span>
+      <Card className="overflow-visible">
+        <CardContent className="grid gap-4 lg:grid-cols-[1fr_260px]">
+          <div
+            className="relative flex min-w-0 gap-3 outline-none"
+            tabIndex={commanderEntry ? 0 : undefined}
+            onMouseEnter={() => setIsCommanderPreviewOpen(true)}
+            onFocus={() => setIsCommanderPreviewOpen(true)}
+          >
+            {commanderEntry?.card.image_url ? (
+              <img
+                src={commanderEntry.card.image_url}
+                alt={commanderEntry.card.name}
+                className="h-20 w-14 shrink-0 rounded border object-cover transition-transform hover:-translate-y-0.5"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Commander
+              </div>
+              <div className="truncate text-xl font-semibold">
+                {deck.commanderName ?? "No commander set"}
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {commanderEntry?.card.type_line ??
+                  "Set a commander in Import to enable color identity checks."}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="secondary">{stats.uniqueCards} unique</Badge>
+                <Badge variant="secondary">{stats.totalCards} total</Badge>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {commanderPreviewPanel}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={onEditImport}>
+                Edit / re-import
+              </Button>
+              <Button variant="secondary" onClick={onStartOver}>
+                Start over
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="text-xs text-muted-foreground">
+        Ramp and interaction are automatically classified from card text and tags.
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -89,6 +226,51 @@ export function OverviewTab({
         <StatCard title="Ramp" value={stats.rampCount} />
         <StatCard title="Interaction" value={stats.interactionCount} />
       </div>
+
+      <Card>
+        <details>
+          <summary className="cursor-pointer list-none px-4 text-base font-medium [&::-webkit-details-marker]:hidden">
+            Decklist ({stats.totalCards} cards)
+          </summary>
+          <CardContent className="mt-3 space-y-4">
+            {groupedDecklist.map((group) => (
+              <div key={group.label} className="space-y-2">
+                <div className="flex items-center justify-between border-b pb-1 text-sm font-medium">
+                  <span>{group.label}</span>
+                  <Badge variant="secondary">{group.count}</Badge>
+                </div>
+                <div className="space-y-1">
+                  {group.entries.map((entry) => (
+                    <div
+                      key={entry.card.id}
+                      className="flex items-center justify-between gap-3 rounded border bg-muted/20 px-2 py-1.5 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <span className="truncate">{entry.card.name}</span>
+                        {entry.count > 1 ? (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            x{entry.count}
+                          </span>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Remove ${entry.card.name}`}
+                        onClick={() => onRemoveCard(entry.card.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </details>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">

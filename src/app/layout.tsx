@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "Scry",
+  title: "DeepScry",
   description: "MTG Commander deck analyzer",
 };
 

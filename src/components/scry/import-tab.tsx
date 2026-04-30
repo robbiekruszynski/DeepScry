@@ -4,13 +4,8 @@ import * as React from "react";
 import { flushSync } from "react-dom";
 import { Loader2 } from "lucide-react";
 
-import {
-  buildEntries,
-  parseDecklist,
-  type Deck,
-  type DeckArchetype,
-} from "@/lib/deck";
-import { resolveNamesForDeckImport, type ScryfallCard } from "@/lib/scryfall";
+import type { Deck, DeckArchetype } from "@/lib/deck";
+import { importDecklist, type DeckImportResult } from "@/lib/deck-import";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,21 +13,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
-type ImportResult = {
-  deck: Deck | null;
-  errors: string[];
-};
-
 export function ImportTab({
   deck,
+  text,
+  commanderName,
+  archetype,
+  onTextChange,
+  onCommanderNameChange,
+  onArchetypeChange,
   onDeckChange,
 }: {
   deck: Deck | null;
+  text: string;
+  commanderName: string;
+  archetype: DeckArchetype;
+  onTextChange: (next: string) => void;
+  onCommanderNameChange: (next: string) => void;
+  onArchetypeChange: (next: DeckArchetype) => void;
   onDeckChange: (next: Deck | null) => void;
 }) {
-  const [text, setText] = React.useState<string>("");
-  const [commanderName, setCommanderName] = React.useState<string>("");
-  const [archetype, setArchetype] = React.useState<DeckArchetype>("midrange");
   const [isImporting, setIsImporting] = React.useState(false);
   const [progress, setProgress] = React.useState<{ done: number; total: number }>(
     { done: 0, total: 0 }
@@ -58,97 +57,24 @@ export function ImportTab({
         )
       : null;
 
-  React.useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("scry:import-draft:v1");
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as {
-        text?: string;
-        commanderName?: string;
-        archetype?: DeckArchetype;
-      };
-      if (parsed.text) setText(parsed.text);
-      if (parsed.commanderName) setCommanderName(parsed.commanderName);
-      if (parsed.archetype) setArchetype(parsed.archetype);
-    } catch {}
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "scry:import-draft:v1",
-        JSON.stringify({ text, commanderName, archetype })
-      );
-    } catch {}
-  }, [text, commanderName, archetype]);
-
-  async function runImport(): Promise<ImportResult> {
-    const parsed = parseDecklist(text);
-    if (parsed.errors.length) return { deck: null, errors: parsed.errors };
-
-    const commanderInput = commanderName.trim();
-    const namesToResolve = parsed.lines.map((l) => l.name);
-    if (commanderInput) namesToResolve.push(commanderInput);
-
-    const uniqueNames = Array.from(new Set(namesToResolve));
+  async function runImport(): Promise<DeckImportResult> {
     importStartedAt.current = Date.now();
     flushSync(() => {
-      setProgress({ done: 0, total: uniqueNames.length });
-      setImportDetail("Starting…");
+      setProgress({ done: 0, total: 0 });
+      setImportDetail("Starting...");
     });
 
-    const cardsByRequestedName = new Map<string, ScryfallCard>();
-    const resolved = await resolveNamesForDeckImport(uniqueNames, (p) => {
-      flushSync(() => {
-        setProgress({ done: p.done, total: p.total });
-        setImportDetail(p.detail);
-      });
-    });
-    for (const name of uniqueNames) {
-      const card = resolved.get(name);
-      if (card) cardsByRequestedName.set(name, card);
-    }
-
-    const { entries, missingNames } = buildEntries(cardsByRequestedName, parsed.lines);
-    if (missingNames.length) {
-      return {
-        deck: null,
-        errors: [
-          `Could not match ${missingNames.length} card name(s) after fetch: ${missingNames.slice(0, 8).join(", ")}${missingNames.length > 8 ? "…" : ""}`,
-        ],
-      };
-    }
-    if (entries.length === 0 && parsed.lines.length > 0) {
-      return {
-        deck: null,
-        errors: ["Deck resolved to zero cards. Check the decklist format and try again."],
-      };
-    }
-
-    if (commanderInput) {
-      const commanderCard = cardsByRequestedName.get(commanderInput);
-      if (!commanderCard) {
-        return {
-          deck: null,
-          errors: [`Could not resolve commander: ${commanderInput}`],
-        };
-      }
-
-      const alreadyInDeck = entries.some((e) => e.card.id === commanderCard.id);
-      if (!alreadyInDeck) {
-        entries.push({ card: commanderCard, count: 1 });
-        entries.sort((a, b) => a.card.name.localeCompare(b.card.name));
-      }
-    }
-
-    return {
-      deck: {
-        entries,
-        commanderName: commanderInput || undefined,
-        archetype,
+    return importDecklist({
+      text,
+      commanderName,
+      archetype,
+      onProgress: (p) => {
+        flushSync(() => {
+          setProgress({ done: p.done, total: p.total });
+          setImportDetail(p.detail);
+        });
       },
-      errors: [],
-    };
+    });
   }
 
   async function onImportClick() {
@@ -192,7 +118,7 @@ export function ImportTab({
               id="commander"
               placeholder="Atraxa, Praetors' Voice"
               value={commanderName}
-              onChange={(e) => setCommanderName(e.target.value)}
+              onChange={(e) => onCommanderNameChange(e.target.value)}
             />
           </div>
 
@@ -201,7 +127,7 @@ export function ImportTab({
             <select
               id="archetype"
               value={archetype}
-              onChange={(e) => setArchetype(e.target.value as DeckArchetype)}
+              onChange={(e) => onArchetypeChange(e.target.value as DeckArchetype)}
               className="h-9 rounded-md border bg-background px-3 text-sm"
             >
               <option value="midrange">Midrange</option>
@@ -220,7 +146,7 @@ export function ImportTab({
                 "Paste Moxfield plain text export here.\nExample:\n1 Sol Ring\n1 Command Tower\n1 Swords to Plowshares"
               }
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => onTextChange(e.target.value)}
               className="min-h-48"
             />
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
