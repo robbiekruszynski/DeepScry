@@ -303,7 +303,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     return () => {
       active = false;
     };
-  }, [deck.entries, priceMap, deckSignature]);
+  }, [deck.entries, deckSignature]); // priceMap intentionally excluded — ref tracks attempted IDs
 
   const buildAddSuggestions = React.useCallback(async () => {
     const commander = deck.commanderName
@@ -423,9 +423,11 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     profileNeed.needCurve,
   ]);
 
+  const deckSignatureForSuggestions = deckSignature;
   React.useEffect(() => {
     void buildAddSuggestions();
-  }, [buildAddSuggestions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckSignatureForSuggestions, priceCeiling]);
 
   const addCount = suggestions.length;
 
@@ -484,7 +486,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
   );
 
   return (
-    <Card className="overflow-visible">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Budget tuner</CardTitle>
         <p className="text-xs leading-relaxed text-muted-foreground">
@@ -493,192 +495,172 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
           your deck’s color identity, commander strategy, and cards you already own excluded.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4 overflow-visible text-sm">
-        <div className="flex flex-col gap-4 overflow-visible lg:grid lg:grid-cols-[1fr_min(300px,100%)] lg:grid-rows-[auto_auto] lg:items-start lg:gap-x-4 lg:gap-y-4">
-          <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Price ceiling per card (USD)</div>
-                <Input
-                  value={targetBudget}
-                  onChange={(e) => {
-                    setTargetBudget(e.target.value);
-                  }}
-                  className="w-36"
-                  inputMode="decimal"
-                  aria-label="Price ceiling in US dollars"
-                />
-                <div className="text-[11px] text-muted-foreground">
-                  Use 0 for no budget cap.
+      <CardContent className="space-y-4 text-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-x-6">
+          {/* Left column: controls + mobile preview + suggestions */}
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <div className="text-xs text-muted-foreground">Price ceiling per card (USD)</div>
+                  <Input
+                    value={targetBudget}
+                    onChange={(e) => setTargetBudget(e.target.value)}
+                    className="w-36"
+                    inputMode="decimal"
+                    aria-label="Price ceiling in US dollars"
+                  />
+                  <div className="text-[11px] text-muted-foreground">Use 0 for no budget cap.</div>
                 </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-xs"
+                  onClick={() => setTargetBudget("0.00")}
+                >
+                  No price cap
+                </Button>
+                <Button variant="outline" onClick={refreshPrices} disabled={isRefreshing}>
+                  {isRefreshing ? "Refreshing prices…" : "Refresh prices"}
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-xs"
-                onClick={() => {
-                  setTargetBudget("0.00");
-                }}
-              >
-                No price cap
-              </Button>
-              <Button variant="outline" onClick={refreshPrices} disabled={isRefreshing}>
-                {isRefreshing ? "Refreshing prices…" : "Refresh prices"}
-              </Button>
-            </div>
 
-            <div className="rounded border bg-muted/20 p-3">
-              <div>Current estimated deck value: ${currentDeckPrice.toFixed(2)}</div>
-              <div>
-                Suggestion price cap: {priceCeiling === null ? "Unlimited" : `$${priceCeiling.toFixed(2)}`}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
-                {isHydratingEstimate ? " (updating…)" : ""}
-              </div>
-              {isHydratingEstimate || isRefreshing ? (
-                <div className="mt-2 space-y-1">
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>
-                      Fetching card prices: {priceProgress.done}/{priceProgress.total}
-                    </span>
-                    <span>{priceProgressPct}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded bg-muted">
-                    <div
-                      className="h-2 rounded bg-primary transition-all duration-300"
-                      style={{ width: `${priceProgressPct}%` }}
-                    />
-                  </div>
+              <div className="rounded border bg-muted/20 p-3">
+                <div>Current estimated deck value: ${currentDeckPrice.toFixed(2)}</div>
+                <div>
+                  Suggestion price cap:{" "}
+                  {priceCeiling === null ? "Unlimited" : `$${priceCeiling.toFixed(2)}`}
                 </div>
-              ) : null}
-              <div
-                className={
-                  confidenceLabel === "High confidence"
-                    ? "mt-2 text-xs text-emerald-600 dark:text-emerald-500"
-                    : confidenceLabel === "Medium confidence"
-                      ? "mt-2 text-xs text-amber-600 dark:text-amber-500"
-                      : "mt-2 text-xs text-destructive"
-                }
-              >
-                {confidenceLabel}
-              </div>
-              <div
-                className={
-                  priceCeiling === null
-                    ? "text-muted-foreground"
-                    : priceCeiling > 0.01
-                      ? "text-emerald-600 dark:text-emerald-500"
-                      : "text-muted-foreground"
-                }
-              >
-                {priceCeiling === null ? (
-                  <>No price ceiling is applied to suggested adds.</>
-                ) : priceCeiling > 0.01 ? (
-                  <>Suggested adds are capped at ${priceCeiling.toFixed(2)} or less.</>
-                ) : (
-                  <>No price ceiling is applied to suggested adds.</>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-              <div>
-                <span className="font-medium text-foreground">Impact if added</span>: fit for current
-                gaps (ramp, interaction, curve), commander strategy, color identity, and your price
-                ceiling. Higher % is a stronger upgrade candidate for this list.
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop: right column spans controls + lists; sticky needs Card overflow-visible (default Card overflow-hidden breaks sticky) */}
-          <div className="hidden lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-28 lg:z-30 lg:block lg:self-start">
-            {previewPanel}
-          </div>
-
-          {/* Mobile: stays under the sticky app header while scrolling suggested adds */}
-          <div className="sticky top-28 z-30 lg:hidden">{previewPanel}</div>
-
-          <div className="min-w-0 lg:col-start-1 lg:row-start-2 space-y-4">
-            <div className="flex min-h-[min(420px,55vh)] flex-col gap-2">
-            <div>
-              <div className="font-medium">Suggested adds</div>
-              <p className="text-[11px] leading-snug text-muted-foreground">
-                Green = priority add · Orange = consider · Red = optional / nice-to-have if you
-                already own it. Suggested adds never include cards already in your decklist.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto rounded border">
-              {suggestions.map((s, idx) => {
-                const tier = listTier(idx, addCount);
-                const tierStyle = ADD_TIER_ROW[tier];
-                const withinPriceCeiling =
-                  priceCeiling !== null && s.price <= priceCeiling + 0.005;
-                return (
-                  <div
-                    key={s.card.name}
-                    className={`border-b px-2 py-2 last:border-b-0 ${tierStyle.row}`}
-                    onMouseEnter={() => setHovered(s.card)}
-                  >
-                    <div className="mb-0.5 flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
-                        {tierStyle.label}
+                <div className="text-xs text-muted-foreground">
+                  Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
+                  {isHydratingEstimate ? " (updating…)" : ""}
+                </div>
+                {isHydratingEstimate || isRefreshing ? (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>
+                        Fetching card prices: {priceProgress.done}/{priceProgress.total}
                       </span>
-                      {withinPriceCeiling ? (
-                        <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                          Within price cap
-                        </span>
-                      ) : null}
+                      <span>{priceProgressPct}%</span>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <a
-                        href={s.card.scryfall_uri}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="truncate pr-2 underline-offset-2 hover:underline"
-                      >
-                        {s.card.name}
-                      </a>
-                      <span className="shrink-0">${s.price.toFixed(2)}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{s.reason}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Impact if added: {(s.impact * 100).toFixed(0)}%
-                    </div>
-                    <div className="mt-1.5 space-y-1 text-[11px] leading-snug text-muted-foreground">
-                      <p>
-                        <span className="font-medium text-foreground/90">How this helps the deck: </span>
-                        {s.deckBenefit}
-                      </p>
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
-                      {s.card.purchase_uris?.tcgplayer ? (
-                        <a
-                          href={s.card.purchase_uris.tcgplayer}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline-offset-2 hover:underline"
-                        >
-                          Buy (TCGplayer)
-                        </a>
-                      ) : null}
-                      {s.card.purchase_uris?.cardmarket ? (
-                        <a
-                          href={s.card.purchase_uris.cardmarket}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline-offset-2 hover:underline"
-                        >
-                          Buy (Cardmarket)
-                        </a>
-                      ) : null}
+                    <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                      <div
+                        className="h-2 rounded bg-primary transition-all duration-300"
+                        style={{ width: `${priceProgressPct}%` }}
+                      />
                     </div>
                   </div>
-                );
-              })}
+                ) : null}
+                <div
+                  className={
+                    confidenceLabel === "High confidence"
+                      ? "mt-2 text-xs text-emerald-600 dark:text-emerald-500"
+                      : confidenceLabel === "Medium confidence"
+                        ? "mt-2 text-xs text-amber-600 dark:text-amber-500"
+                        : "mt-2 text-xs text-destructive"
+                  }
+                >
+                  {confidenceLabel}
+                </div>
+                <div className={priceCeiling !== null && priceCeiling > 0.01 ? "text-emerald-600 dark:text-emerald-500" : "text-muted-foreground"}>
+                  {priceCeiling !== null && priceCeiling > 0.01
+                    ? `Suggested adds are capped at $${priceCeiling.toFixed(2)} or less.`
+                    : "No price ceiling is applied to suggested adds."}
+                </div>
+              </div>
+
+              <div className="rounded border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Impact if added</span>: fit for
+                current gaps (ramp, interaction, curve), commander strategy, color identity, and
+                your price ceiling. Higher % is a stronger upgrade candidate for this list.
+              </div>
+            </div>
+
+            {/* Mobile-only preview */}
+            <div className="lg:hidden">{previewPanel}</div>
+
+            <div className="space-y-2">
+              <div>
+                <div className="font-medium">Suggested adds</div>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Green = priority add · Orange = consider · Red = optional / nice-to-have if you
+                  already own it. Suggested adds never include cards already in your decklist.
+                </p>
+              </div>
+              <div className="rounded border">
+                {suggestions.map((s, idx) => {
+                  const tier = listTier(idx, addCount);
+                  const tierStyle = ADD_TIER_ROW[tier];
+                  const withinPriceCeiling =
+                    priceCeiling !== null && s.price <= priceCeiling + 0.005;
+                  return (
+                    <div
+                      key={s.card.name}
+                      className={`border-b px-2 py-2 last:border-b-0 ${tierStyle.row}`}
+                      onMouseEnter={() => setHovered(s.card)}
+                    >
+                      <div className="mb-0.5 flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+                          {tierStyle.label}
+                        </span>
+                        {withinPriceCeiling ? (
+                          <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                            Within price cap
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <a
+                          href={s.card.scryfall_uri}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate pr-2 underline-offset-2 hover:underline"
+                        >
+                          {s.card.name}
+                        </a>
+                        <span className="shrink-0">${s.price.toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{s.reason}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Impact if added: {(s.impact * 100).toFixed(0)}%
+                      </div>
+                      <div className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                        <span className="font-medium text-foreground/90">How this helps: </span>
+                        {s.deckBenefit}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
+                        {s.card.purchase_uris?.tcgplayer ? (
+                          <a
+                            href={s.card.purchase_uris.tcgplayer}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:underline"
+                          >
+                            Buy (TCGplayer)
+                          </a>
+                        ) : null}
+                        {s.card.purchase_uris?.cardmarket ? (
+                          <a
+                            href={s.card.purchase_uris.cardmarket}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:underline"
+                          >
+                            Buy (Cardmarket)
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
+
+          {/* Right column: sticky preview (desktop only) */}
+          <div className="hidden lg:sticky lg:top-28 lg:z-20 lg:block lg:w-[280px] lg:shrink-0 lg:self-start">
+            {previewPanel}
           </div>
         </div>
 

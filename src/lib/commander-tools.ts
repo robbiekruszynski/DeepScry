@@ -223,76 +223,142 @@ function detectedWinCombos(deck: Deck) {
   );
 }
 
+type ArchetypeProfile = {
+  landMin: number;
+  landIdeal: number;
+  rampMin: number;
+  rampIdeal: number;
+  interactionMin: number;
+  interactionIdeal: number;
+  cmcWarning: number; // avg CMC above this triggers a note
+  rampLabel: string;
+  interactionLabel: string;
+};
+
+const ARCHETYPE_PROFILES: Record<DeckArchetype, ArchetypeProfile> = {
+  midrange: {
+    landMin: 33, landIdeal: 36,
+    rampMin: 8, rampIdeal: 12,
+    interactionMin: 7, interactionIdeal: 12,
+    cmcWarning: 3.8,
+    rampLabel: "ramp pieces",
+    interactionLabel: "interaction spells",
+  },
+  ramp: {
+    landMin: 34, landIdeal: 37,
+    rampMin: 12, rampIdeal: 16,
+    interactionMin: 6, interactionIdeal: 10,
+    cmcWarning: 4.5,
+    rampLabel: "ramp pieces (ramp decks want 12+)",
+    interactionLabel: "interaction spells",
+  },
+  aggro: {
+    landMin: 30, landIdeal: 34,
+    rampMin: 5, rampIdeal: 10,
+    interactionMin: 8, interactionIdeal: 12,
+    cmcWarning: 3.0,
+    rampLabel: "mana accelerants",
+    interactionLabel: "removal spells (aggro needs clean answers)",
+  },
+  control: {
+    landMin: 35, landIdeal: 38,
+    rampMin: 7, rampIdeal: 11,
+    interactionMin: 14, interactionIdeal: 20,
+    cmcWarning: 4.0,
+    rampLabel: "mana rocks / ramp",
+    interactionLabel: "counterspells + removal (control wants 14+)",
+  },
+  combo: {
+    landMin: 28, landIdeal: 33,
+    rampMin: 10, rampIdeal: 15,
+    interactionMin: 6, interactionIdeal: 10,
+    cmcWarning: 2.8,
+    rampLabel: "fast mana / ramp pieces",
+    interactionLabel: "interaction / protection spells",
+  },
+};
+
 export function deckHealthWarnings(
   deck: Deck,
   tagMap: CardTagMap = {}
 ): HealthWarning[] {
   const s = computeDeckStats(deck);
+  const archetype = (deck.archetype ?? "midrange") as DeckArchetype;
+  const profile = ARCHETYPE_PROFILES[archetype] ?? ARCHETYPE_PROFILES.midrange;
   const warnings: HealthWarning[] = [];
 
-  if (s.landCount >= 37) {
-    warnings.push({
-      tone: "positive",
-      text: `✅ Strong land base (${s.landCount} lands)`,
-    });
-  } else if (s.landCount >= 33) {
+  // Land count — thresholds differ by archetype
+  if (s.landCount >= profile.landIdeal) {
+    warnings.push({ tone: "positive", text: `✅ Strong land base (${s.landCount} lands)` });
+  } else if (s.landCount >= profile.landMin) {
     warnings.push({
       tone: "concern",
-      text: "⚠️ Land count slightly low, consider 36-38",
+      text: `⚠️ Land count is on the low side for ${archetype} (${s.landCount} lands, aim for ${profile.landIdeal}+)`,
     });
   } else {
     warnings.push({
       tone: "concern",
-      text: "❌ Low land count — risk of mana screw",
+      text: `❌ Low land count (${s.landCount}) — high risk of mana screw for a ${archetype} deck`,
     });
   }
 
+  // Average CMC note
+  if (s.avgCmcNonLands > profile.cmcWarning) {
+    warnings.push({
+      tone: "concern",
+      text: `⚠️ High average CMC (${s.avgCmcNonLands.toFixed(2)}) for ${archetype} — expect slow starts unless ramp is solid`,
+    });
+  } else if (s.avgCmcNonLands > 0) {
+    warnings.push({
+      tone: "positive",
+      text: `✅ Average CMC looks appropriate for ${archetype} (${s.avgCmcNonLands.toFixed(2)})`,
+    });
+  }
+
+  // Ramp — thresholds differ by archetype
   const rampCount = countTaggedDeckCards(deck, tagMap, "ramp", isRamp);
-  if (rampCount >= 12) {
-    warnings.push({
-      tone: "positive",
-      text: `✅ Strong ramp package (${rampCount} ramp pieces)`,
-    });
-  } else if (rampCount >= 8) {
+  if (rampCount >= profile.rampIdeal) {
+    warnings.push({ tone: "positive", text: `✅ Strong ramp package (${rampCount} ${profile.rampLabel})` });
+  } else if (rampCount >= profile.rampMin) {
     warnings.push({
       tone: "concern",
-      text: `⚠️ Ramp is light for a ${s.avgCmcNonLands.toFixed(2)} average CMC deck`,
+      text: `⚠️ Ramp is light for ${archetype} (${rampCount} ${profile.rampLabel}, aim for ${profile.rampIdeal}+)`,
     });
   } else {
     warnings.push({
       tone: "concern",
-      text: `❌ Low ramp count (${rampCount}) — add more acceleration`,
+      text: `❌ Low ramp count (${rampCount} ${profile.rampLabel}) — add more acceleration`,
     });
   }
 
+  // Interaction — thresholds differ by archetype
   const interactionCount = countTaggedDeckCards(deck, tagMap, "interaction", isInteraction);
-  if (interactionCount >= 12) {
-    warnings.push({
-      tone: "positive",
-      text: `✅ Strong interaction suite (${interactionCount} answers)`,
-    });
-  } else if (interactionCount >= 7) {
+  if (interactionCount >= profile.interactionIdeal) {
+    warnings.push({ tone: "positive", text: `✅ Strong interaction suite (${interactionCount} ${profile.interactionLabel})` });
+  } else if (interactionCount >= profile.interactionMin) {
     warnings.push({
       tone: "concern",
-      text: `⚠️ Interaction is light (${interactionCount}) — consider more flexible answers`,
+      text: `⚠️ Interaction is light for ${archetype} (${interactionCount} ${profile.interactionLabel}, aim for ${profile.interactionIdeal}+)`,
     });
   } else {
     warnings.push({
       tone: "concern",
-      text: "❌ Low interaction — vulnerable to opponent threats",
+      text: `❌ Low interaction (${interactionCount}) — vulnerable to opponent threats`,
     });
   }
 
+  // Win condition check
   const winconCount = countTaggedDeckCards(deck, tagMap, "wincon", isWinconHeuristic);
   const winconOdds =
     s.totalCards > 0 ? hypergeometricAtLeast(s.totalCards, winconCount, 7, 1) * 100 : 0;
   if (winconOdds < 20) {
     warnings.push({
       tone: "concern",
-      text: "⚠️ Win condition odds are low — tag your wincons in the Probabilities tab for an accurate reading",
+      text: "⚠️ Win condition odds are low — tag your finishers in the Probabilities tab for an accurate reading",
     });
   }
 
+  // Detected combos
   for (const [a, b] of detectedWinCombos(deck)) {
     warnings.push({
       tone: "neutral",

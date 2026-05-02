@@ -1,8 +1,17 @@
 import type { DeckArchetype } from "@/lib/deck";
+import type { EdhrecCard } from "@/app/api/edhrec/route";
 
 export type ManaColor = "W" | "U" | "B" | "R" | "G";
 export type BudgetTier = "budget" | "upgraded" | "optimized" | "cedh";
 export type PowerLevel = "casual" | "focused" | "optimized" | "cedh";
+
+// Price ceiling per card for each budget tier
+export const BUDGET_PRICE_CAPS: Record<BudgetTier, number | null> = {
+  budget: 5,
+  upgraded: 20,
+  optimized: 60,
+  cedh: null, // no limit
+};
 
 export const WISE_MOTHMAN_SAMPLE = {
   name: "The Wise Mothman Sultai sample",
@@ -125,328 +134,6 @@ const POPULAR_COMMANDERS: Record<string, string> = {
   WUBRG: "Kenrith, the Returned King",
 };
 
-const COLORLESS_STAPLES = [
-  "Sol Ring",
-  "Arcane Signet",
-  "Fellwar Stone",
-  "Mind Stone",
-  "Thought Vessel",
-  "Wayfarer's Bauble",
-  "Commander's Sphere",
-  "Worn Powerstone",
-  "Hedron Archive",
-  "Swiftfoot Boots",
-  "Lightning Greaves",
-  "Skullclamp",
-  "Mask of Memory",
-  "Sword of the Animist",
-  "Solemn Simulacrum",
-  "Burnished Hart",
-  "Meteor Golem",
-  "Duplicant",
-  "Steel Hellkite",
-  "Myr Battlesphere",
-  "Trading Post",
-  "Panharmonicon",
-  "The Immortal Sun",
-  "Endless Atlas",
-  "Mind's Eye",
-  "Palladium Myr",
-  "Ornithopter of Paradise",
-  "Foundry Inspector",
-  "Jhoira's Familiar",
-  "Scrap Trawler",
-  "Myr Retriever",
-  "Junk Diver",
-  "Steel Overseer",
-  "Chief of the Foundry",
-  "Adaptive Automaton",
-  "Universal Automaton",
-  "Liberator, Urza's Battlethopter",
-  "Walking Ballista",
-  "Hangarback Walker",
-  "Kuldotha Forgemaster",
-  "Nevinyrral's Disk",
-  "Unstable Obelisk",
-  "Dreamstone Hedron",
-  "Thran Dynamo",
-  "Gilded Lotus",
-  "Planar Bridge",
-  "Staff of Nin",
-  "Key to the City",
-  "Thaumatic Compass",
-  "Strionic Resonator",
-  "Conjurer's Closet",
-  "Caged Sun",
-  "Temple Bell",
-  "Perilous Vault",
-  "Spine of Ish Sah",
-];
-
-const COLOR_STAPLES: Record<ManaColor, string[]> = {
-  W: [
-    "Swords to Plowshares",
-    "Path to Exile",
-    "Generous Gift",
-    "Austere Command",
-    "Sun Titan",
-    "Esper Sentinel",
-    "Smothering Tithe",
-    "Teferi's Protection",
-    "Wrath of God",
-    "Farewell",
-    "Welcoming Vampire",
-    "Land Tax",
-  ],
-  U: [
-    "Counterspell",
-    "Arcane Denial",
-    "Swan Song",
-    "Negate",
-    "Fact or Fiction",
-    "Rhystic Study",
-    "Mystic Remora",
-    "Cyclonic Rift",
-    "Ponder",
-    "Preordain",
-    "Mulldrifter",
-    "Reality Shift",
-  ],
-  B: [
-    "Demonic Tutor",
-    "Diabolic Tutor",
-    "Sign in Blood",
-    "Night's Whisper",
-    "Phyrexian Arena",
-    "Toxic Deluge",
-    "Damnation",
-    "Feed the Swarm",
-    "Go for the Throat",
-    "Reanimate",
-    "Victimize",
-    "Gray Merchant of Asphodel",
-  ],
-  R: [
-    "Chaos Warp",
-    "Blasphemous Act",
-    "Vandalblast",
-    "Jeska's Will",
-    "Faithless Looting",
-    "Big Score",
-    "Dockside Extortionist",
-    "Dualcaster Mage",
-    "Reverberate",
-    "Impact Tremors",
-    "Etali, Primal Storm",
-    "Comet Storm",
-  ],
-  G: [
-    "Cultivate",
-    "Kodama's Reach",
-    "Farseek",
-    "Nature's Lore",
-    "Three Visits",
-    "Sakura-Tribe Elder",
-    "Beast Within",
-    "Heroic Intervention",
-    "Eternal Witness",
-    "Beast Whisperer",
-    "Avenger of Zendikar",
-    "Finale of Devastation",
-  ],
-};
-
-const OPTIMIZED_COLORLESS = [
-  "Sol Ring",
-  "Arcane Signet",
-  "Fellwar Stone",
-  "The One Ring",
-  "Skullclamp",
-  "Lightning Greaves",
-  "Swiftfoot Boots",
-  "Sensei's Divining Top",
-];
-
-const CEDH_COLORLESS = [
-  "Mana Crypt",
-  "Sol Ring",
-  "Mana Vault",
-  "Chrome Mox",
-  "Mox Diamond",
-  "Mox Opal",
-  "Lotus Petal",
-  "Jeweled Lotus",
-  "Grim Monolith",
-  "The One Ring",
-  "Sensei's Divining Top",
-  "Walking Ballista",
-  "Aetherflux Reservoir",
-];
-
-const OPTIMIZED_COLOR_STAPLES: Record<ManaColor, string[]> = {
-  W: [
-    "Esper Sentinel",
-    "Swords to Plowshares",
-    "Path to Exile",
-    "Enlightened Tutor",
-    "Silence",
-    "Grand Abolisher",
-    "Smothering Tithe",
-    "Teferi's Protection",
-  ],
-  U: [
-    "Mystic Remora",
-    "Rhystic Study",
-    "Swan Song",
-    "Counterspell",
-    "Pact of Negation",
-    "Mystical Tutor",
-    "Cyclonic Rift",
-    "Ponder",
-    "Preordain",
-    "Thassa's Oracle",
-  ],
-  B: [
-    "Demonic Tutor",
-    "Vampiric Tutor",
-    "Diabolic Intent",
-    "Tainted Pact",
-    "Demonic Consultation",
-    "Toxic Deluge",
-    "Necropotence",
-    "Reanimate",
-    "Dark Ritual",
-  ],
-  R: [
-    "Dockside Extortionist",
-    "Jeska's Will",
-    "Deflecting Swat",
-    "Gamble",
-    "Underworld Breach",
-    "Wheel of Fortune",
-    "Pyroblast",
-    "Red Elemental Blast",
-  ],
-  G: [
-    "Birds of Paradise",
-    "Delighted Halfling",
-    "Worldly Tutor",
-    "Veil of Summer",
-    "Finale of Devastation",
-    "Nature's Claim",
-    "Heroic Intervention",
-    "Carpet of Flowers",
-  ],
-};
-
-const CEDH_COLOR_STAPLES: Record<ManaColor, string[]> = {
-  W: [
-    "Esper Sentinel",
-    "Swords to Plowshares",
-    "Path to Exile",
-    "Enlightened Tutor",
-    "Silence",
-    "Grand Abolisher",
-    "Ranger-Captain of Eos",
-    "Drannith Magistrate",
-    "Archivist of Oghma",
-    "Teferi's Protection",
-  ],
-  U: [
-    "Thassa's Oracle",
-    "Force of Will",
-    "Force of Negation",
-    "Fierce Guardianship",
-    "Pact of Negation",
-    "Mana Drain",
-    "Swan Song",
-    "Flusterstorm",
-    "Mystical Tutor",
-    "Brainstorm",
-    "Ponder",
-    "Preordain",
-    "Mystic Remora",
-    "Rhystic Study",
-    "Cyclonic Rift",
-  ],
-  B: [
-    "Demonic Tutor",
-    "Vampiric Tutor",
-    "Imperial Seal",
-    "Diabolic Intent",
-    "Demonic Consultation",
-    "Tainted Pact",
-    "Ad Nauseam",
-    "Necropotence",
-    "Dark Ritual",
-    "Cabal Ritual",
-    "Opposition Agent",
-    "Toxic Deluge",
-    "Deadly Rollick",
-    "Reanimate",
-    "Entomb",
-    "Thoughtseize",
-  ],
-  R: [
-    "Dockside Extortionist",
-    "Deflecting Swat",
-    "Jeska's Will",
-    "Wheel of Fortune",
-    "Gamble",
-    "Underworld Breach",
-    "Grinding Station",
-    "Pyroblast",
-    "Red Elemental Blast",
-    "Rite of Flame",
-    "Simian Spirit Guide",
-    "Twinflame",
-    "Dualcaster Mage",
-  ],
-  G: [
-    "Birds of Paradise",
-    "Delighted Halfling",
-    "Elvish Spirit Guide",
-    "Carpet of Flowers",
-    "Veil of Summer",
-    "Worldly Tutor",
-    "Finale of Devastation",
-    "Green Sun's Zenith",
-    "Noxious Revival",
-    "Allosaurus Shepherd",
-    "Collector Ouphe",
-    "Nature's Claim",
-    "Heroic Intervention",
-  ],
-};
-
-const CEDH_GENERIC_WINCONS = [
-  "Laboratory Maniac",
-  "Jace, Wielder of Mysteries",
-  "Walking Ballista",
-];
-
-const BUDGET_EXCLUSIONS: Record<BudgetTier, Set<string>> = {
-  budget: new Set([
-    "Cyclonic Rift",
-    "Demonic Tutor",
-    "Dockside Extortionist",
-    "Doubling Season",
-    "Esper Sentinel",
-    "Finale of Devastation",
-    "Jeska's Will",
-    "Land Tax",
-    "Mystic Remora",
-    "Rhystic Study",
-    "Smothering Tithe",
-    "Teferi's Protection",
-    "Three Visits",
-    "Toxic Deluge",
-  ]),
-  upgraded: new Set(["Dockside Extortionist", "Demonic Tutor", "Teferi's Protection"]),
-  optimized: new Set(),
-  cedh: new Set(),
-};
-
 const BASICS: Record<ManaColor, string> = {
   W: "Plains",
   U: "Island",
@@ -455,134 +142,53 @@ const BASICS: Record<ManaColor, string> = {
   G: "Forest",
 };
 
+// Universal staples guaranteed in any generated deck (all budget-tiers include Sol Ring)
+const UNIVERSAL_STAPLES = ["Sol Ring", "Command Tower", "Arcane Signet"];
+
 function colorKey(colors: ManaColor[]) {
   return [...colors].sort().join("") || "BGU";
 }
 
-function uniqueCards(cards: string[], budget: BudgetTier, commanderName: string) {
-  const seen = new Set([commanderName.toLowerCase()]);
-  const blocked = BUDGET_EXCLUSIONS[budget];
-  return cards.filter((card) => {
-    const key = card.toLowerCase();
-    if (seen.has(key) || blocked.has(card)) return false;
-    seen.add(key);
-    return true;
+function archetype(powerLevel: PowerLevel): DeckArchetype {
+  return powerLevel === "cedh" || powerLevel === "optimized" ? "combo" : "midrange";
+}
+
+// Filter EDHREC cards to those affordable under the budget tier's per-card cap
+function applyBudgetFilter(cards: EdhrecCard[], tier: BudgetTier): EdhrecCard[] {
+  const cap = BUDGET_PRICE_CAPS[tier];
+  if (cap === null) return cards; // cEDH: no limit
+  return cards.filter((c) => c.price === null || c.price <= cap);
+}
+
+// Sort by: synergy score descending, then inclusion rate descending
+function rankCards(cards: EdhrecCard[]): EdhrecCard[] {
+  return [...cards].sort((a, b) => {
+    const synergyDiff = b.synergy - a.synergy;
+    if (Math.abs(synergyDiff) > 0.01) return synergyDiff;
+    return b.inclusion - a.inclusion;
   });
 }
 
-function tierStaples(powerLevel: PowerLevel, pickedColors: ManaColor[]) {
-  if (powerLevel === "cedh") {
-    return [
-      ...CEDH_COLORLESS,
-      ...pickedColors.flatMap((color) => CEDH_COLOR_STAPLES[color]),
-      ...CEDH_GENERIC_WINCONS,
-      ...OPTIMIZED_COLORLESS,
-      ...pickedColors.flatMap((color) => OPTIMIZED_COLOR_STAPLES[color]),
-      ...COLORLESS_STAPLES,
-      ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
-    ];
-  }
-
-  if (powerLevel === "optimized") {
-    return [
-      ...OPTIMIZED_COLORLESS,
-      ...pickedColors.flatMap((color) => OPTIMIZED_COLOR_STAPLES[color]),
-      ...COLORLESS_STAPLES,
-      ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
-    ];
-  }
-
-  return [
-    ...COLORLESS_STAPLES,
-    ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
-  ];
+function buildLandLines(colors: ManaColor[], landTarget: number): string[] {
+  const basics = colors.map((c) => BASICS[c]);
+  const perColor = Math.floor(landTarget / colors.length);
+  const remainder = landTarget % colors.length;
+  return basics.map((basic, i) => `${perColor + (i < remainder ? 1 : 0)} ${basic}`);
 }
 
-const FETCH_LANDS = [
-  "Flooded Strand",
-  "Polluted Delta",
-  "Bloodstained Mire",
-  "Wooded Foothills",
-  "Windswept Heath",
-  "Marsh Flats",
-  "Scalding Tarn",
-  "Verdant Catacombs",
-  "Arid Mesa",
-  "Misty Rainforest",
-];
-
-const PAIR_LANDS: Record<string, { shock: string; bond: string; pain: string; dual: string }> = {
-  WU: { shock: "Hallowed Fountain", bond: "Sea of Clouds", pain: "Adarkar Wastes", dual: "Tundra" },
-  UB: { shock: "Watery Grave", bond: "Morphic Pool", pain: "Underground River", dual: "Underground Sea" },
-  BR: { shock: "Blood Crypt", bond: "Luxury Suite", pain: "Sulfurous Springs", dual: "Badlands" },
-  RG: { shock: "Stomping Ground", bond: "Spire Garden", pain: "Karplusan Forest", dual: "Taiga" },
-  WG: { shock: "Temple Garden", bond: "Bountiful Promenade", pain: "Brushland", dual: "Savannah" },
-  WB: { shock: "Godless Shrine", bond: "Vault of Champions", pain: "Caves of Koilos", dual: "Scrubland" },
-  UR: { shock: "Steam Vents", bond: "Training Center", pain: "Shivan Reef", dual: "Volcanic Island" },
-  BG: { shock: "Overgrown Tomb", bond: "Undergrowth Stadium", pain: "Llanowar Wastes", dual: "Bayou" },
-  UG: { shock: "Breeding Pool", bond: "Rejuvenating Springs", pain: "Yavimaya Coast", dual: "Tropical Island" },
-  WR: { shock: "Sacred Foundry", bond: "Spectator Seating", pain: "Battlefield Forge", dual: "Plateau" },
+export type GeneratedSample = {
+  name: string;
+  commanderName: string;
+  archetype: DeckArchetype;
+  powerLevel: PowerLevel;
+  budget: BudgetTier;
+  colors: ManaColor[];
+  decklist: string;
+  source: "edhrec" | "fallback";
+  totalEdhrecCards: number;
 };
 
-function colorPairs(colors: ManaColor[]) {
-  const order = ["W", "U", "B", "R", "G"] as ManaColor[];
-  const picked = order.filter((color) => colors.includes(color));
-  const pairs: string[] = [];
-  for (let i = 0; i < picked.length; i++) {
-    for (let j = i + 1; j < picked.length; j++) {
-      pairs.push(`${picked[i]}${picked[j]}`);
-    }
-  }
-  return pairs;
-}
-
-function landPackage(powerLevel: PowerLevel, budget: BudgetTier, colors: ManaColor[], landTarget: number) {
-  const pairLands = colorPairs(colors).flatMap((pair) => {
-    const lands = PAIR_LANDS[pair];
-    if (!lands) return [];
-    if (powerLevel === "cedh" || budget === "cedh") {
-      return [lands.dual, lands.shock, lands.bond, lands.pain];
-    }
-    if (powerLevel === "optimized" || budget === "optimized") {
-      return [lands.shock, lands.bond, lands.pain];
-    }
-    if (budget === "upgraded") {
-      return [lands.shock, lands.pain];
-    }
-    return [lands.pain];
-  });
-
-  const premiumUtility =
-    powerLevel === "cedh"
-      ? [
-          "Command Tower",
-          "City of Brass",
-          "Mana Confluence",
-          "Exotic Orchard",
-          "Gemstone Caverns",
-          "Ancient Tomb",
-          "Forbidden Orchard",
-          "Gemstone Mine",
-          "Reflecting Pool",
-          ...FETCH_LANDS,
-        ]
-      : [
-          "Command Tower",
-          "Exotic Orchard",
-          "Path of Ancestry",
-          "Opal Palace",
-          "Evolving Wilds",
-          "Terramorphic Expanse",
-          "Myriad Landscape",
-          "Reliquary Tower",
-          "Rogue's Passage",
-          "Temple of the False God",
-        ];
-
-  return uniqueCards([...premiumUtility, ...pairLands], budget, "").slice(0, landTarget);
-}
-
-export function generateCommanderSample({
+export async function generateCommanderSample({
   colors,
   commanderName,
   budget,
@@ -592,41 +198,99 @@ export function generateCommanderSample({
   commanderName?: string;
   budget: BudgetTier;
   powerLevel: PowerLevel;
-}) {
+}): Promise<GeneratedSample> {
   const pickedColors = colors.length ? colors : (["B", "G", "U"] as ManaColor[]);
   const key = colorKey(pickedColors);
-  const commander = commanderName?.trim() || POPULAR_COMMANDERS[key] || POPULAR_COMMANDERS.BGU;
+  const commander = commanderName?.trim() || POPULAR_COMMANDERS[key] || POPULAR_COMMANDERS.BGU!;
+
   const landTarget =
-    powerLevel === "cedh"
-      ? 31
-      : powerLevel === "optimized"
-        ? 34
-        : powerLevel === "focused"
-          ? 36
-          : 38;
-  const nonlandTarget = 100 - landTarget;
-  const pool = uniqueCards(tierStaples(powerLevel, pickedColors), budget, commander);
-  const spells = pool.slice(0, nonlandTarget - 1);
-  const nonbasicLands = landPackage(powerLevel, budget, pickedColors, landTarget);
-  const basicsNeeded = Math.max(0, landTarget - nonbasicLands.length);
-  const basicLines = pickedColors.map((color, idx) => {
-    const base = Math.floor(basicsNeeded / pickedColors.length);
-    const extra = idx < basicsNeeded % pickedColors.length ? 1 : 0;
-    return `${base + extra} ${BASICS[color]}`;
-  });
+    powerLevel === "cedh" ? 31 : powerLevel === "optimized" ? 34 : powerLevel === "focused" ? 36 : 38;
+  const spellTarget = 99 - landTarget; // 99 non-commander slots, minus lands
+
+  // Fetch EDHREC recommendations
+  let edhrecCards: EdhrecCard[] = [];
+  let source: "edhrec" | "fallback" = "fallback";
+
+  try {
+    const res = await fetch(
+      `/api/edhrec?commander=${encodeURIComponent(commander)}`,
+      { cache: "no-store" }
+    );
+    if (res.ok) {
+      const data = await res.json() as { cards?: EdhrecCard[]; error?: string };
+      if (Array.isArray(data.cards) && data.cards.length > 0) {
+        edhrecCards = data.cards;
+        source = "edhrec";
+      }
+    }
+  } catch {
+    // network error — fall through to fallback
+  }
+
+  let spellLines: string[];
+
+  if (source === "edhrec" && edhrecCards.length > 0) {
+    const budgetFiltered = applyBudgetFilter(edhrecCards, budget);
+    const ranked = rankCards(budgetFiltered);
+
+    // Exclude lands (EDHREC sometimes includes lands in cardlist) and the commander itself
+    const commanderLower = commander.toLowerCase();
+    const nonLandSpells = ranked.filter(
+      (c) =>
+        !c.name.toLowerCase().includes("plains") &&
+        !c.name.toLowerCase().includes("island") &&
+        !c.name.toLowerCase().includes("swamp") &&
+        !c.name.toLowerCase().includes("mountain") &&
+        !c.name.toLowerCase().includes("forest") &&
+        c.name.toLowerCase() !== commanderLower
+    );
+
+    // Always include universal staples that pass budget filter, then top EDHREC picks
+    const cap = BUDGET_PRICE_CAPS[budget];
+    const universalAllowed = UNIVERSAL_STAPLES.filter(
+      (s) => s.toLowerCase() !== commanderLower
+    ).filter((s) => {
+      // Check if EDHREC has price data for this staple
+      const match = edhrecCards.find((c) => c.name.toLowerCase() === s.toLowerCase());
+      if (!match) return true; // no price data, include it
+      return cap === null || (match.price ?? 0) <= cap;
+    });
+
+    const picked = new Set(universalAllowed.map((s) => s.toLowerCase()));
+    const spellNames: string[] = [...universalAllowed];
+
+    for (const card of nonLandSpells) {
+      if (spellNames.length >= spellTarget) break;
+      if (picked.has(card.name.toLowerCase())) continue;
+      picked.add(card.name.toLowerCase());
+      spellNames.push(card.name);
+    }
+
+    spellLines = spellNames.map((n) => `1 ${n}`);
+  } else {
+    // Fallback: simple generic staples (the old approach) so something always loads
+    spellLines = UNIVERSAL_STAPLES
+      .filter((s) => s.toLowerCase() !== commander.toLowerCase())
+      .map((n) => `1 ${n}`);
+  }
+
+  const landLines = buildLandLines(pickedColors, landTarget);
+
+  const decklist = [
+    `1 ${commander}`,
+    ...spellLines,
+    ...landLines,
+  ].join("\n");
 
   return {
-    name: `${commander} ${budget} ${powerLevel} sample`,
+    name: `${commander} – ${budget} / ${powerLevel}`,
     commanderName: commander,
-    archetype: powerLevel === "cedh" || powerLevel === "optimized" ? "combo" as DeckArchetype : "midrange" as DeckArchetype,
+    archetype: archetype(powerLevel),
     powerLevel,
     budget,
     colors: pickedColors,
-    decklist: [
-      `1 ${commander}`,
-      ...spells.map((card) => `1 ${card}`),
-      ...nonbasicLands.map((card) => `1 ${card}`),
-      ...basicLines,
-    ].join("\n"),
+    decklist,
+    source,
+    totalEdhrecCards: edhrecCards.length,
   };
 }

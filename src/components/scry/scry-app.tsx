@@ -179,25 +179,31 @@ export function ScryApp() {
   }
 
   async function loadGeneratedSample() {
-    const sample = generateCommanderSample({
-      colors: selectedColors,
-      commanderName: sampleCommander,
-      budget: sampleBudget,
-      powerLevel: samplePowerLevel,
-    });
-    await importSample({
-      decklist: sample.decklist,
-      commanderName: sample.commanderName,
-      archetype: sample.archetype,
-    });
+    setIsSampleImporting(true);
+    setSampleError(null);
+    try {
+      const sample = await generateCommanderSample({
+        colors: selectedColors,
+        commanderName: sampleCommander,
+        budget: sampleBudget,
+        powerLevel: samplePowerLevel,
+      });
+      await importSample(
+        { decklist: sample.decklist, commanderName: sample.commanderName, archetype: sample.archetype },
+        true
+      );
+    } catch (err) {
+      setSampleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSampleImporting(false);
+    }
   }
 
-  async function importSample(sample: {
-    decklist: string;
-    commanderName: string;
-    archetype: DeckArchetype;
-  }) {
-    setIsSampleImporting(true);
+  async function importSample(
+    sample: { decklist: string; commanderName: string; archetype: DeckArchetype },
+    alreadyLoading = false
+  ) {
+    if (!alreadyLoading) setIsSampleImporting(true);
     setSampleError(null);
     setImportText(sample.decklist);
     setCommanderName(sample.commanderName);
@@ -223,7 +229,7 @@ export function ScryApp() {
       setSampleError(error instanceof Error ? error.message : String(error));
       setTab("overview");
     } finally {
-      setIsSampleImporting(false);
+      if (!alreadyLoading) setIsSampleImporting(false);
     }
   }
 
@@ -336,8 +342,9 @@ export function ScryApp() {
                         Build a sample from your preferences
                       </div>
                       <p className="mt-1 text-xs">
-                        Pick colors and a budget/power target, or type a commander name to seed
-                        the list. DeepScry fills the Import tab and runs the import for you.
+                        Pick colors and a budget/power target, or type a commander name to pull
+                        real recommendations from EDHREC. Cards are filtered to your price tier.
+                        DeepScry fills the Import tab and runs the analysis for you.
                       </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className="space-y-2">

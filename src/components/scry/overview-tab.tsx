@@ -344,11 +344,10 @@ export function OverviewTab({
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="text-xs leading-relaxed text-muted-foreground">
-              These profiles are reference targets for common Commander environments (precon,
-              upgraded precon, local tournament, and cEDH-style). The score compares your deck's
-              lands, ramp, interaction, and average CMC to each profile. Higher percentages mean
-              your current build structure is closer to that environment's typical pacing and
-              density.
+              Heuristic comparison against four typical Commander power environments. Targets
+              (lands, ramp, interaction, fast mana, tutors, average CMC) are based on established
+              deckbuilding guidelines — not live tournament data. A high score means your build
+              structure resembles that tier, not that it performs at that level.
             </div>
             {benchmarkScores.map((b) => {
               const pct = Math.round(b.score * 100);
