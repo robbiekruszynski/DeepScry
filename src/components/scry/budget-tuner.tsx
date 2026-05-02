@@ -526,21 +526,30 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                 </Button>
               </div>
 
-              <div className="rounded border bg-muted/20 p-3">
-                <div>Current estimated deck value: ${currentDeckPrice.toFixed(2)}</div>
-                <div>
-                  Suggestion price cap:{" "}
-                  {priceCeiling === null ? "Unlimited" : `$${priceCeiling.toFixed(2)}`}
+              <div className="rounded border bg-muted/20 p-3 space-y-1">
+                <div className="flex items-baseline gap-2">
+                  <span>
+                    Estimated deck value:{" "}
+                    <span className="font-semibold">
+                      {isHydratingEstimate
+                        ? "loading…"
+                        : `$${currentDeckPrice.toFixed(2)}`}
+                    </span>
+                  </span>
+                  {isHydratingEstimate ? null : coverageRatio < 0.75 ? (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      (partial — {pricedCardCount}/{totalUniqueCount} cards priced)
+                    </span>
+                  ) : null}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
-                  {isHydratingEstimate ? " (updating…)" : ""}
                 </div>
                 {isHydratingEstimate || isRefreshing ? (
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                       <span>
-                        Fetching card prices: {priceProgress.done}/{priceProgress.total}
+                        Fetching prices: {priceProgress.done}/{priceProgress.total}
                       </span>
                       <span>{priceProgressPct}%</span>
                     </div>
@@ -555,18 +564,19 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                 <div
                   className={
                     confidenceLabel === "High confidence"
-                      ? "mt-2 text-xs text-emerald-600 dark:text-emerald-500"
+                      ? "text-xs text-emerald-600 dark:text-emerald-500"
                       : confidenceLabel === "Medium confidence"
-                        ? "mt-2 text-xs text-amber-600 dark:text-amber-500"
-                        : "mt-2 text-xs text-destructive"
+                        ? "text-xs text-amber-600 dark:text-amber-500"
+                        : "text-xs text-destructive"
                   }
                 >
-                  {confidenceLabel}
+                  {isHydratingEstimate ? "Fetching prices from Scryfall…" : confidenceLabel}
                 </div>
-                <div className={priceCeiling !== null && priceCeiling > 0.01 ? "text-emerald-600 dark:text-emerald-500" : "text-muted-foreground"}>
-                  {priceCeiling !== null && priceCeiling > 0.01
-                    ? `Suggested adds are capped at $${priceCeiling.toFixed(2)} or less.`
-                    : "No price ceiling is applied to suggested adds."}
+                <div className="text-xs text-muted-foreground">
+                  Suggestion price cap:{" "}
+                  {priceCeiling === null || priceCeiling <= 0.01
+                    ? "No ceiling (unlimited)"
+                    : `$${priceCeiling.toFixed(2)} per card`}
                 </div>
               </div>
 

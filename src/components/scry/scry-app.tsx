@@ -342,9 +342,10 @@ export function ScryApp() {
                         Build a sample from your preferences
                       </div>
                       <p className="mt-1 text-xs">
-                        Pick colors and a budget/power target, or type a commander name to pull
-                        real recommendations from EDHREC. Cards are filtered to your price tier.
-                        DeepScry fills the Import tab and runs the analysis for you.
+                        Pick colors and a budget/power target to get a randomly selected
+                        commander matched to that power level, or type a specific commander name.
+                        Cards come from EDHREC filtered to your per-card price cap — re-roll as
+                        many times as you like to explore different commanders.
                       </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className="space-y-2">
@@ -434,10 +435,10 @@ export function ScryApp() {
                             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                             disabled={isSampleImporting}
                           >
-                            <option value="budget">Budget / starter: under $100</option>
-                            <option value="upgraded">Upgraded: $100-$300</option>
-                            <option value="optimized">Optimized: $300-$800</option>
-                            <option value="cedh">No budget / cEDH staples: $800+</option>
+                            <option value="budget">Starter (max $5/card — ~$20-60 total)</option>
+                            <option value="upgraded">Upgraded (max $20/card — ~$80-200 total)</option>
+                            <option value="optimized">Optimized (max $60/card — ~$200-500 total)</option>
+                            <option value="cedh">cEDH / no price limit ($500+)</option>
                           </select>
                         </div>
                         <div className="space-y-2">
