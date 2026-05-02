@@ -248,8 +248,8 @@ export function ScryApp() {
     };
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#070412] px-4 py-6">
-        <div className="w-full max-w-4xl">
+      <div className="flex min-h-screen items-center justify-center bg-[#070412]">
+        <div className="w-full">
           <OrbHero onEnter={enterApp} />
         </div>
       </div>
