@@ -427,10 +427,10 @@ export function ScryApp() {
                             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                             disabled={isSampleImporting}
                           >
-                            <option value="budget">Budget</option>
-                            <option value="upgraded">Upgraded</option>
-                            <option value="optimized">Optimized</option>
-                            <option value="cedh">No budget / cEDH staples</option>
+                            <option value="budget">Budget / starter: under $100</option>
+                            <option value="upgraded">Upgraded: $100-$300</option>
+                            <option value="optimized">Optimized: $300-$800</option>
+                            <option value="cedh">No budget / cEDH staples: $800+</option>
                           </select>
                         </div>
                         <div className="space-y-2">
@@ -443,10 +443,10 @@ export function ScryApp() {
                             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                             disabled={isSampleImporting}
                           >
-                            <option value="casual">Casual</option>
-                            <option value="focused">Focused</option>
-                            <option value="optimized">Optimized</option>
-                            <option value="cedh">cEDH</option>
+                            <option value="casual">Casual: power 1-4</option>
+                            <option value="focused">Focused: power 5-6</option>
+                            <option value="optimized">Optimized: power 7-8</option>
+                            <option value="cedh">cEDH: power 9-10</option>
                           </select>
                         </div>
                       </div>

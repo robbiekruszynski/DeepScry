@@ -4,7 +4,7 @@ import * as React from "react";
 
 import type { Deck } from "@/lib/deck";
 import type { ScryfallCard } from "@/lib/scryfall";
-import { fetchCardById, fetchCardByNameFuzzy } from "@/lib/scryfall";
+import { fetchCardById, searchCards } from "@/lib/scryfall";
 import { computeDeckStats } from "@/lib/stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,33 +17,82 @@ type Candidate = {
   category: "ramp" | "interaction" | "draw";
 };
 
-const RAMP_CANDIDATES: Candidate[] = [
-  { name: "Arcane Signet", reason: "cheap, universal mana rock", category: "ramp" },
-  { name: "Fellwar Stone", reason: "efficient color fixing", category: "ramp" },
-  { name: "Nature's Lore", reason: "2 mana land ramp", category: "ramp" },
-  { name: "Three Visits", reason: "2 mana land ramp", category: "ramp" },
-  { name: "Rampant Growth", reason: "budget land acceleration", category: "ramp" },
-];
-
-const INTERACTION_CANDIDATES: Candidate[] = [
-  { name: "Swords to Plowshares", reason: "efficient creature removal", category: "interaction" },
-  { name: "Path to Exile", reason: "efficient creature removal", category: "interaction" },
-  { name: "Generous Gift", reason: "broad permanent answer", category: "interaction" },
-  { name: "Pongify", reason: "1 mana creature interaction", category: "interaction" },
-  { name: "Counterspell", reason: "clean stack interaction", category: "interaction" },
-];
-
-const DRAW_CANDIDATES: Candidate[] = [
-  { name: "Mystic Remora", reason: "early draw engine", category: "draw" },
-  { name: "Rhystic Study", reason: "high impact draw source", category: "draw" },
-  { name: "Fact or Fiction", reason: "instant speed card advantage", category: "draw" },
-  { name: "Night's Whisper", reason: "cheap card draw", category: "draw" },
-  { name: "Read the Bones", reason: "selection + draw", category: "draw" },
-];
+type SearchPlan = {
+  query: string;
+  reason: string;
+  category: Candidate["category"];
+};
 
 function colorLegal(candidateColors: string[], commanderColors: Set<string>) {
   if (commanderColors.size === 0) return true;
   return candidateColors.every((c) => commanderColors.has(c));
+}
+
+function deckColorIdentity(deck: Deck, commander?: ScryfallCard) {
+  const colors = new Set(commander?.color_identity ?? []);
+  if (colors.size > 0) return colors;
+  for (const entry of deck.entries) {
+    for (const color of entry.card.color_identity) colors.add(color);
+  }
+  return colors;
+}
+
+function commanderStrategyPlans(commander?: ScryfallCard): SearchPlan[] {
+  if (!commander) return [];
+  const text = `${commander.name} ${commander.type_line} ${commander.oracle_text ?? ""}`.toLowerCase();
+  const plans: SearchPlan[] = [];
+
+  if (text.includes("+1/+1 counter")) {
+    plans.push({
+      query: 'o:"+1/+1 counter"',
+      reason: `supports ${commander.name}'s +1/+1 counter plan`,
+      category: "draw",
+    });
+  }
+  if (text.includes("token")) {
+    plans.push({
+      query: "o:token",
+      reason: `supports ${commander.name}'s token plan`,
+      category: "draw",
+    });
+  }
+  if (text.includes("graveyard") || text.includes("mill")) {
+    plans.push({
+      query: "(o:graveyard or o:mill)",
+      reason: `supports ${commander.name}'s graveyard plan`,
+      category: "draw",
+    });
+  }
+  if (text.includes("sacrifice") || text.includes("dies")) {
+    plans.push({
+      query: "(o:sacrifice or o:dies)",
+      reason: `supports ${commander.name}'s sacrifice plan`,
+      category: "draw",
+    });
+  }
+  if (text.includes("artifact")) {
+    plans.push({
+      query: "t:artifact",
+      reason: `fits ${commander.name}'s artifact strategy`,
+      category: "draw",
+    });
+  }
+  if (text.includes("enchantment")) {
+    plans.push({
+      query: "t:enchantment",
+      reason: `fits ${commander.name}'s enchantment strategy`,
+      category: "draw",
+    });
+  }
+  if (text.includes("instant") || text.includes("sorcery")) {
+    plans.push({
+      query: "(t:instant or t:sorcery)",
+      reason: `fits ${commander.name}'s spellslinger plan`,
+      category: "draw",
+    });
+  }
+
+  return plans;
 }
 
 function describeAddBenefit(
@@ -88,8 +137,6 @@ const ADD_TIER_ROW: Record<
 
 export function BudgetTuner({ deck }: { deck: Deck }) {
   const [targetBudget, setTargetBudget] = React.useState<string>("0.00");
-  /** Once true, estimated deck value no longer overwrites the budget field (until deck change or “Match deck value”). */
-  const [userEditedBudget, setUserEditedBudget] = React.useState(false);
   const [priceMap, setPriceMap] = React.useState<Record<string, number | null>>({});
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isHydratingEstimate, setIsHydratingEstimate] = React.useState(false);
@@ -140,17 +187,14 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     const sigChanged = prevDeckSigRef.current !== deckSignature;
     if (prevDeckSigRef.current === null) {
       prevDeckSigRef.current = deckSignature;
-      setTargetBudget(currentDeckPrice.toFixed(2));
+      setTargetBudget("0.00");
       return;
     }
     if (sigChanged) {
       prevDeckSigRef.current = deckSignature;
-      setUserEditedBudget(false);
-      setTargetBudget(currentDeckPrice.toFixed(2));
-    } else if (!userEditedBudget) {
-      setTargetBudget(currentDeckPrice.toFixed(2));
+      setTargetBudget("0.00");
     }
-  }, [deckSignature, currentDeckPrice, userEditedBudget]);
+  }, [deckSignature]);
 
   const pricedCardCount = React.useMemo(() => {
     return deck.entries.filter((e) => {
@@ -178,9 +222,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
   const budgetAmount = Number(targetBudget);
   const budgetNum = Number.isFinite(budgetAmount) ? budgetAmount : 0;
-  /** Positive = room under your budget for purchases; negative = deck costs more than your budget. */
-  const buyingPower = budgetNum - currentDeckPrice;
-  const overBudgetAbs = Math.max(0, currentDeckPrice - budgetNum);
+  const priceCeiling = budgetNum > 0 ? budgetNum : null;
 
   const profileNeed = React.useMemo(() => {
     return {
@@ -269,12 +311,59 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
           (e) => e.card.name.toLowerCase() === deck.commanderName!.toLowerCase()
         )?.card
       : undefined;
-    const commanderColors = new Set(commander?.color_identity ?? []);
-    const pool: Candidate[] = [];
-    if (stats.rampCount < 10) pool.push(...RAMP_CANDIDATES);
-    if (stats.interactionCount < 10) pool.push(...INTERACTION_CANDIDATES);
-    if (stats.avgCmcNonLands > 3.3) pool.push(...DRAW_CANDIDATES);
-    if (pool.length === 0) pool.push(...RAMP_CANDIDATES.slice(0, 2), ...INTERACTION_CANDIDATES.slice(0, 2));
+    const commanderColors = deckColorIdentity(deck, commander);
+    const colorFilter =
+      commanderColors.size > 0
+        ? `ci<=${Array.from(commanderColors).join("").toLowerCase()}`
+        : "";
+    const priceFilter = priceCeiling ? `usd<=${priceCeiling.toFixed(2)}` : "";
+    const baseFilter = ["legal:commander", "-t:land", colorFilter, priceFilter]
+      .filter(Boolean)
+      .join(" ");
+    const plans: SearchPlan[] = [];
+    if (stats.rampCount < 10) {
+      plans.push(
+        {
+          query: "o:add t:artifact cmc<=3",
+          reason: "efficient mana acceleration within your color identity",
+          category: "ramp",
+        },
+        {
+          query: 'o:"search your library" o:"land card" cmc<=3',
+          reason: "low-cost land ramp within your color identity",
+          category: "ramp",
+        }
+      );
+    }
+    if (stats.interactionCount < 10) {
+      plans.push({
+        query: '(o:"destroy target" or o:"exile target" or o:"counter target") cmc<=3',
+        reason: "efficient interaction within your color identity",
+        category: "interaction",
+      });
+    }
+    if (stats.avgCmcNonLands > 3.3) {
+      plans.push({
+        query: 'o:"draw a card" cmc<=3',
+        reason: "cheap card flow to smooth a higher curve",
+        category: "draw",
+      });
+    }
+    plans.push(...commanderStrategyPlans(commander));
+    if (plans.length === 0) {
+      plans.push(
+        {
+          query: "o:add t:artifact cmc<=3",
+          reason: "efficient mana acceleration within your color identity",
+          category: "ramp",
+        },
+        {
+          query: '(o:"destroy target" or o:"exile target" or o:"counter target") cmc<=3',
+          reason: "flexible interaction within your color identity",
+          category: "interaction",
+        }
+      );
+    }
 
     const out: {
       card: ScryfallCard;
@@ -285,25 +374,41 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
       deckBenefit: string;
     }[] = [];
     const seen = new Set(deck.entries.map((e) => e.card.name.toLowerCase()));
-    for (const c of pool) {
-      if (seen.has(c.name.toLowerCase())) continue;
-      const card = await fetchCardByNameFuzzy(c.name);
-      if (!colorLegal(card.color_identity, commanderColors)) continue;
-      const p = card.price_usd ?? 0;
-      const impact =
-        c.category === "ramp"
-          ? Math.min(1, 0.5 + profileNeed.needRamp * 0.08)
-          : c.category === "interaction"
-            ? Math.min(1, 0.5 + profileNeed.needInteraction * 0.08)
-            : Math.min(1, 0.45 + profileNeed.needCurve * 0.25);
-      out.push({
-        card,
-        price: p,
-        reason: c.reason,
-        impact,
-        category: c.category,
-        deckBenefit: describeAddBenefit(c, stats),
-      });
+    for (const plan of plans) {
+      let cards: ScryfallCard[] = [];
+      try {
+        cards = await searchCards(`${baseFilter} ${plan.query}`);
+      } catch {
+        continue;
+      }
+
+      for (const card of cards.slice(0, 8)) {
+        if (seen.has(card.name.toLowerCase())) continue;
+        if (!colorLegal(card.color_identity, commanderColors)) continue;
+        if (priceCeiling !== null && card.price_usd === null) continue;
+        const p = card.price_usd ?? 0;
+        if (priceCeiling !== null && p > priceCeiling) continue;
+        const impact =
+          plan.category === "ramp"
+            ? Math.min(1, 0.5 + profileNeed.needRamp * 0.08)
+            : plan.category === "interaction"
+              ? Math.min(1, 0.5 + profileNeed.needInteraction * 0.08)
+              : Math.min(1, 0.45 + profileNeed.needCurve * 0.25);
+        const candidate = {
+          name: card.name,
+          reason: plan.reason,
+          category: plan.category,
+        };
+        seen.add(card.name.toLowerCase());
+        out.push({
+          card,
+          price: p,
+          reason: plan.reason,
+          impact,
+          category: plan.category,
+          deckBenefit: describeAddBenefit(candidate, stats),
+        });
+      }
     }
     out.sort((a, b) => b.impact - a.impact || a.price - b.price);
     setSuggestions(out.slice(0, 10));
@@ -312,6 +417,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     stats.rampCount,
     stats.interactionCount,
     stats.avgCmcNonLands,
+    priceCeiling,
     profileNeed.needRamp,
     profileNeed.needInteraction,
     profileNeed.needCurve,
@@ -382,10 +488,9 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Budget tuner</CardTitle>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Your budget defaults to this deck’s estimated value — set it to what you can spend on
-          upgrades. Suggestions use simple deck stats and a small staple pool (not full deck
-          “synergy” analysis). Automatic cut lists are disabled: price-only heuristics tended to
-          flag expensive staples instead of true dead weight.
+          Set a per-card price ceiling for suggested upgrades. Leave it at 0 for unlimited/no
+          budget, or enter a cap like 10 or 50. Suggestions are searched through Scryfall with
+          your deck’s color identity, commander strategy, and cards you already own excluded.
         </p>
       </CardHeader>
       <CardContent className="space-y-4 overflow-visible text-sm">
@@ -393,19 +498,18 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
           <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
             <div className="flex flex-wrap items-end gap-2">
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Your budget (USD)</div>
+                <div className="text-xs text-muted-foreground">Price ceiling per card (USD)</div>
                 <Input
                   value={targetBudget}
                   onChange={(e) => {
-                    setUserEditedBudget(true);
                     setTargetBudget(e.target.value);
                   }}
                   className="w-36"
                   inputMode="decimal"
-                  aria-label="Budget in US dollars"
+                  aria-label="Price ceiling in US dollars"
                 />
                 <div className="text-[11px] text-muted-foreground">
-                  Starts at your deck’s estimated value. Change it to your spending limit.
+                  Use 0 for no budget cap.
                 </div>
               </div>
               <Button
@@ -414,11 +518,10 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                 size="sm"
                 className="shrink-0 text-xs"
                 onClick={() => {
-                  setUserEditedBudget(false);
-                  setTargetBudget(currentDeckPrice.toFixed(2));
+                  setTargetBudget("0.00");
                 }}
               >
-                Match deck value
+                No price cap
               </Button>
               <Button variant="outline" onClick={refreshPrices} disabled={isRefreshing}>
                 {isRefreshing ? "Refreshing prices…" : "Refresh prices"}
@@ -427,7 +530,9 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
             <div className="rounded border bg-muted/20 p-3">
               <div>Current estimated deck value: ${currentDeckPrice.toFixed(2)}</div>
-              <div>Your budget: ${budgetNum.toFixed(2)}</div>
+              <div>
+                Suggestion price cap: {priceCeiling === null ? "Unlimited" : `$${priceCeiling.toFixed(2)}`}
+              </div>
               <div className="text-xs text-muted-foreground">
                 Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
                 {isHydratingEstimate ? " (updating…)" : ""}
@@ -461,25 +566,19 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
               </div>
               <div
                 className={
-                  overBudgetAbs > 0.01
-                    ? "text-destructive"
-                    : buyingPower > 0.01
+                  priceCeiling === null
+                    ? "text-muted-foreground"
+                    : priceCeiling > 0.01
                       ? "text-emerald-600 dark:text-emerald-500"
                       : "text-muted-foreground"
                 }
               >
-                {overBudgetAbs > 0.01 ? (
-                  <>
-                    Deck is about ${overBudgetAbs.toFixed(2)} above your budget — trim or swap cards
-                    manually, or raise your budget target.
-                  </>
-                ) : buyingPower > 0.01 ? (
-                  <>
-                    About ${buyingPower.toFixed(2)} buying power vs your budget (room for upgrades
-                    before you exceed your limit).
-                  </>
+                {priceCeiling === null ? (
+                  <>No price ceiling is applied to suggested adds.</>
+                ) : priceCeiling > 0.01 ? (
+                  <>Suggested adds are capped at ${priceCeiling.toFixed(2)} or less.</>
                 ) : (
-                  <>Deck value and your budget are aligned.</>
+                  <>No price ceiling is applied to suggested adds.</>
                 )}
               </div>
             </div>
@@ -487,9 +586,8 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
             <div className="rounded border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
               <div>
                 <span className="font-medium text-foreground">Impact if added</span>: fit for current
-                gaps (ramp, interaction, curve) and commander color legality. Higher % is a stronger
-                generic upgrade for this list. A “within buying power” tag means this card’s list price
-                is at or below your current headroom (single purchase — not a full cart).
+                gaps (ramp, interaction, curve), commander strategy, color identity, and your price
+                ceiling. Higher % is a stronger upgrade candidate for this list.
               </div>
             </div>
           </div>
@@ -508,16 +606,15 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
               <div className="font-medium">Suggested adds</div>
               <p className="text-[11px] leading-snug text-muted-foreground">
                 Green = priority add · Orange = consider · Red = optional / nice-to-have if you
-                already own it. Tags compare each card’s price to your current buying power (budget
-                minus deck value).
+                already own it. Suggested adds never include cards already in your decklist.
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-auto rounded border">
               {suggestions.map((s, idx) => {
                 const tier = listTier(idx, addCount);
                 const tierStyle = ADD_TIER_ROW[tier];
-                const withinBuyingPower =
-                  buyingPower > 0.01 && s.price <= buyingPower + 0.005;
+                const withinPriceCeiling =
+                  priceCeiling !== null && s.price <= priceCeiling + 0.005;
                 return (
                   <div
                     key={s.card.name}
@@ -528,13 +625,9 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                       <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
                         {tierStyle.label}
                       </span>
-                      {withinBuyingPower ? (
+                      {withinPriceCeiling ? (
                         <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                          Within buying power
-                        </span>
-                      ) : buyingPower > 0.01 ? (
-                        <span className="rounded border border-muted-foreground/30 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          Over headroom
+                          Within price cap
                         </span>
                       ) : null}
                     </div>

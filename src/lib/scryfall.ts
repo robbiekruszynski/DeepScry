@@ -476,6 +476,60 @@ export async function fetchCardByNameFuzzy(name: string): Promise<ScryfallCard> 
   });
 }
 
+export async function searchCards(query: string): Promise<ScryfallCard[]> {
+  return enqueueScryfall(async () => {
+    const useProxy = typeof window !== "undefined";
+    if (!useProxy) {
+      await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+    }
+
+    const url = useProxy
+      ? `/api/scryfall/card?search=${encodeURIComponent(query)}`
+      : `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(query)}`;
+
+    let payload = await fetchCardPayloadWithRetry(url);
+    if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+      payload = await fetchCardPayloadWithRetry(
+        `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(query)}`
+      );
+    }
+
+    if (payload.status === 429) {
+      const retryMs = Math.max(
+        parseRetryAfterMs(payload.retryAfter) ?? 60_000,
+        60_000
+      );
+      await delay(retryMs);
+      if (!useProxy) {
+        await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+      }
+      payload = await fetchCardPayloadWithRetry(url);
+      if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+        payload = await fetchCardPayloadWithRetry(
+          `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(query)}`
+        );
+      }
+    }
+
+    if (!payload.ok) {
+      throw new Error(`Scryfall search failed (${payload.status}): ${errorDetailFromPayload(payload)}`);
+    }
+
+    let json: { data?: unknown[] };
+    try {
+      json = JSON.parse(payload.text) as { data?: unknown[] };
+    } catch {
+      throw new Error("Scryfall returned invalid JSON.");
+    }
+
+    const cards = (json.data ?? []).map(cardFromScryfallJson);
+    for (const card of cards) {
+      persistCache(card.name, card);
+    }
+    return cards;
+  });
+}
+
 export async function fetchCardById(cardId: string): Promise<ScryfallCard> {
   const useProxy = typeof window !== "undefined";
   const url = useProxy

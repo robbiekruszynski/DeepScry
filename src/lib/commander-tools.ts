@@ -1,5 +1,6 @@
-import type { CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
+import type { CardTag, CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
 import { expandDeck } from "@/lib/deck";
+import { hypergeometricAtLeast } from "@/lib/analysis";
 import type { ScryfallCard } from "@/lib/scryfall";
 import {
   isArtifact,
@@ -195,168 +196,159 @@ export function deckBenchmarkScores(deck: Deck) {
   });
 }
 
-export function deckHealthWarnings(deck: Deck): HealthWarning[] {
+function countTaggedDeckCards(
+  deck: Deck,
+  tagMap: CardTagMap,
+  tag: CardTag,
+  heuristic: (card: ScryfallCard) => boolean
+) {
+  return deck.entries.reduce((sum, entry) => {
+    const tagged = (tagMap[entry.card.id] ?? []).includes(tag);
+    return sum + (tagged || heuristic(entry.card) ? entry.count : 0);
+  }, 0);
+}
+
+const KNOWN_WIN_COMBOS = [
+  ["Bloodchief Ascension", "Mindcrank"],
+  ["Thassa's Oracle", "Demonic Consultation"],
+  ["Thassa's Oracle", "Tainted Pact"],
+  ["Laboratory Maniac", "Demonic Consultation"],
+  ["Exquisite Blood", "Sanguine Bond"],
+] as const;
+
+function detectedWinCombos(deck: Deck) {
+  const names = new Set(deck.entries.map((entry) => entry.card.name.toLowerCase()));
+  return KNOWN_WIN_COMBOS.filter(([a, b]) =>
+    names.has(a.toLowerCase()) && names.has(b.toLowerCase())
+  );
+}
+
+export function deckHealthWarnings(
+  deck: Deck,
+  tagMap: CardTagMap = {}
+): HealthWarning[] {
   const s = computeDeckStats(deck);
-  const p = computePowerSignals(deck);
   const warnings: HealthWarning[] = [];
-  if (s.totalCards !== 100) {
-    warnings.push({
-      tone: "concern",
-      text: `Deck size is ${s.totalCards}; Commander decks are usually 100 cards.`,
-    });
-  }
-  if (s.totalCards === 100) {
+
+  if (s.landCount >= 37) {
     warnings.push({
       tone: "positive",
-      text: "Deck size is on target for Commander (100 cards).",
+      text: `✅ Strong land base (${s.landCount} lands)`,
+    });
+  } else if (s.landCount >= 33) {
+    warnings.push({
+      tone: "concern",
+      text: "⚠️ Land count slightly low, consider 36-38",
+    });
+  } else {
+    warnings.push({
+      tone: "concern",
+      text: "❌ Low land count — risk of mana screw",
     });
   }
 
-  const bestFit = deckBenchmarkScores(deck).sort((a, b) => b.score - a.score)[0];
-  if (!bestFit) return warnings;
-
-  warnings.push({
-    tone: "neutral",
-    text: `Closest benchmark profile: ${bestFit.label} (${Math.round(
-      bestFit.score * 100
-    )}% structural match).`,
-  });
-
-  if (bestFit.deltas.lands < -2) {
+  const rampCount = countTaggedDeckCards(deck, tagMap, "ramp", isRamp);
+  if (rampCount >= 12) {
     warnings.push({
-      tone: "concern",
-      text: `Land count is below ${bestFit.label} by ${Math.abs(
-        Math.round(bestFit.deltas.lands)
-      )}. Consider +1 to +3 lands for smoother opening turns.`,
+      tone: "positive",
+      text: `✅ Strong ramp package (${rampCount} ramp pieces)`,
     });
-  } else if (bestFit.deltas.lands > 3) {
+  } else if (rampCount >= 8) {
     warnings.push({
       tone: "concern",
-      text: `Land count is above ${bestFit.label} by ${Math.round(
-        bestFit.deltas.lands
-      )}. You can test trimming 1-2 lands for more action slots.`,
+      text: `⚠️ Ramp is light for a ${s.avgCmcNonLands.toFixed(2)} average CMC deck`,
     });
   } else {
     warnings.push({
-      tone: "positive",
-      text: "Land count is in a stable range for this benchmark.",
+      tone: "concern",
+      text: `❌ Low ramp count (${rampCount}) — add more acceleration`,
     });
   }
 
-  if (bestFit.deltas.ramp < -2) {
+  const interactionCount = countTaggedDeckCards(deck, tagMap, "interaction", isInteraction);
+  if (interactionCount >= 12) {
     warnings.push({
-      tone: "concern",
-      text: `Ramp is below ${bestFit.label} by ${Math.abs(
-        Math.round(bestFit.deltas.ramp)
-      )}. Add low-CMC ramp (1-2 mana rocks / land ramp) for faster development.`,
+      tone: "positive",
+      text: `✅ Strong interaction suite (${interactionCount} answers)`,
     });
-  } else if (bestFit.deltas.ramp > 3) {
+  } else if (interactionCount >= 7) {
     warnings.push({
       tone: "concern",
-      text: "Ramp density is high; this is good for speed but can reduce threat density if overdone.",
+      text: `⚠️ Interaction is light (${interactionCount}) — consider more flexible answers`,
     });
   } else {
     warnings.push({
-      tone: "positive",
-      text: "Ramp density is close to target.",
+      tone: "concern",
+      text: "❌ Low interaction — vulnerable to opponent threats",
     });
   }
-  if (bestFit.deltas.interaction < -2) {
+
+  const winconCount = countTaggedDeckCards(deck, tagMap, "wincon", isWinconHeuristic);
+  const winconOdds =
+    s.totalCards > 0 ? hypergeometricAtLeast(s.totalCards, winconCount, 7, 1) * 100 : 0;
+  if (winconOdds < 20) {
     warnings.push({
       tone: "concern",
-      text: `Interaction is below ${bestFit.label} baseline by ${Math.abs(
-        Math.round(bestFit.deltas.interaction)
-      )}. Consider adding flexible removal/counter slots.`,
-    });
-  } else {
-    warnings.push({
-      tone: "positive",
-      text: "Interaction density is in a healthy range for this profile.",
+      text: "⚠️ Win condition odds are low — tag your wincons in the Probabilities tab for an accurate reading",
     });
   }
-  if (bestFit.deltas.avgCmc > 0.35) {
+
+  for (const [a, b] of detectedWinCombos(deck)) {
     warnings.push({
-      tone: "concern",
-      text: `Average CMC is above ${bestFit.label} baseline by ${bestFit.deltas.avgCmc.toFixed(
-        2
-      )}. Trim high-end spells or add more low-cost setup pieces.`,
-    });
-  } else if (bestFit.deltas.avgCmc < -0.45) {
-    warnings.push({
-      tone: "concern",
-      text: "Average CMC is very lean; make sure you still have enough late-game closers.",
-    });
-  } else {
-    warnings.push({
-      tone: "positive",
-      text: "Curve looks aligned with this benchmark.",
+      tone: "neutral",
+      text: `🟣 Combo detected: ${a} + ${b} — high ceiling, single point of failure`,
     });
   }
-  if (bestFit.deltas.fastMana < -3) {
-    warnings.push({
-      tone: "concern",
-      text: `Fast mana is below ${bestFit.label} baseline by ${Math.abs(
-        Math.round(bestFit.deltas.fastMana)
-      )}. Upgrade with efficient accelerants if targeting faster pods.`,
-    });
-  } else if (p.fastManaCount >= bestFit.targets.fastMana) {
-    warnings.push({
-      tone: "positive",
-      text: "Fast mana package is keeping pace with this benchmark.",
-    });
-  }
-  if (bestFit.deltas.tutors < -2) {
-    warnings.push({
-      tone: "concern",
-      text: `Tutor density is below ${bestFit.label} baseline by ${Math.abs(
-        Math.round(bestFit.deltas.tutors)
-      )}. Add tutor redundancy if consistency is a priority.`,
-    });
-  } else if (p.tutorCount >= bestFit.targets.tutors) {
-    warnings.push({
-      tone: "positive",
-      text: "Tutor density supports consistent game plans.",
-    });
-  }
-  if (bestFit.deltas.efficientInteraction < -2) {
-    warnings.push({
-      tone: "concern",
-      text: `Low-cost interaction is below ${bestFit.label} baseline by ${Math.abs(
-        Math.round(bestFit.deltas.efficientInteraction)
-      )}. Prioritize 1-2 mana answers for faster tables.`,
-    });
-  } else if (p.efficientInteractionCount >= bestFit.targets.efficientInteraction) {
-    warnings.push({
-      tone: "positive",
-      text: "Low-cost interaction suite is strong for stack/tempo fights.",
-    });
-  }
-  if (p.winconCount < 2) {
-    warnings.push({
-      tone: "concern",
-      text: "Win condition density looks low; consider adding redundant closes.",
-    });
-  } else {
-    warnings.push({
-      tone: "positive",
-      text: "Win condition density looks sufficient for closing games.",
-    });
-  }
+
   return warnings;
 }
 
 const FAST_MANA_STAPLES = new Set([
+  "ancient tomb",
+  "cabal ritual",
   "mana crypt",
   "sol ring",
   "mana vault",
   "chrome mox",
   "mox diamond",
   "mox amber",
+  "mox opal",
+  "grim monolith",
   "jeweled lotus",
   "lotus petal",
+  "dark ritual",
+  "rite of flame",
+  "simian spirit guide",
+  "elvish spirit guide",
+]);
+
+const FREE_INTERACTION_STAPLES = new Set([
+  "deadly rollick",
+  "deflecting swat",
+  "fierce guardianship",
+  "force of negation",
+  "force of vigor",
+  "force of will",
+  "mindbreak trap",
+  "pact of negation",
+  "submerge",
+]);
+
+const TUTOR_STAPLES = new Set([
+  "demonic tutor",
+  "diabolic intent",
+  "enlightened tutor",
+  "finale of devastation",
+  "gamble",
+  "green sun's zenith",
+  "imperial seal",
+  "mystical tutor",
+  "vampiric tutor",
+  "worldly tutor",
 ]);
 
 function isTutor(card: ScryfallCard) {
+  if (TUTOR_STAPLES.has(card.name.toLowerCase())) return true;
   const t = (card.oracle_text ?? "").toLowerCase();
   return (
     t.includes("search your library") &&
@@ -379,11 +371,16 @@ function isEfficientInteraction(card: ScryfallCard) {
 }
 
 function isFreeInteraction(card: ScryfallCard) {
+  if (FREE_INTERACTION_STAPLES.has(card.name.toLowerCase())) return true;
   if (!isInteraction(card)) return false;
   const cost = card.mana_cost ?? "";
   if (cost.includes("{0}")) return true;
   const t = (card.oracle_text ?? "").toLowerCase();
-  return t.includes("without paying its mana cost");
+  return (
+    t.includes("without paying its mana cost") ||
+    t.includes("rather than pay this spell's mana cost") ||
+    t.includes("rather than pay its mana cost")
+  );
 }
 
 export function computePowerSignals(deck: Deck) {

@@ -29,6 +29,7 @@ export function ProbabilitiesTab({
 }) {
   const rows = React.useMemo(() => computeProbabilities(deck, tagMap), [deck, tagMap]);
   const [query, setQuery] = React.useState("");
+  const [isTagHelpOpen, setIsTagHelpOpen] = React.useState(false);
   const taggedCards = Object.keys(tagMap).length;
 
   const visibleEntries = React.useMemo(() => {
@@ -55,20 +56,24 @@ export function ProbabilitiesTab({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-        <div className="font-medium text-foreground">How tags affect probabilities</div>
-        <div className="mt-1">
-          Manual tags are combined with automatic card classification. Tagging cards directly
-          makes ramp, interaction, draw, and win condition odds match your list more closely.
+      {isTagHelpOpen ? (
+        <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+          <div className="font-medium text-foreground">How tags affect probabilities</div>
+          <div className="mt-1">
+            DeepScry automatically classifies cards as ramp, interaction, draw, or wincons by
+            reading card text — but it isn't always right for your specific deck. Manual tags let
+            you override or add to that classification.
+          </div>
+          <div className="mt-1">
+            Clicking a grey tag adds that card to the category. Clicking a lit tag removes it. The
+            probability table updates live as you tag.
+          </div>
+          <div className="mt-1">
+            Win condition odds only appear once DeepScry detects a known combo in your list, or you
+            tag at least one card as [wincon].
+          </div>
         </div>
-        <div className="mt-1 text-xs">
-          Win condition odds appear when DeepScry detects a win pattern or when you tag cards as
-          wincons below.
-        </div>
-        <div className="mt-2 text-xs">
-          Currently tagged cards: <span className="font-medium text-foreground">{taggedCards}</span>
-        </div>
-      </div>
+      ) : null}
 
       <Table>
         <TableHeader>
@@ -101,13 +106,28 @@ export function ProbabilitiesTab({
 
       <div className="space-y-2 rounded-lg border p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-medium">Manual card tags</div>
+          <div className="text-sm font-medium">
+            Manual card tags{" "}
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              aria-expanded={isTagHelpOpen}
+              aria-label="Toggle manual card tags explanation"
+              onClick={() => setIsTagHelpOpen((open) => !open)}
+            >
+              (?)
+            </Button>
+          </div>
           <Input
             placeholder="Filter card names..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="max-w-xs"
           />
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Currently tagged cards: <span className="font-medium text-foreground">{taggedCards}</span>
         </div>
         <div className="max-h-64 space-y-2 overflow-auto">
           {visibleEntries.map((e) => (

@@ -72,7 +72,7 @@ export function OverviewTab({
 }) {
   const [isCommanderPreviewOpen, setIsCommanderPreviewOpen] = React.useState(false);
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
-  const warnings = React.useMemo(() => deckHealthWarnings(deck), [deck]);
+  const warnings = React.useMemo(() => deckHealthWarnings(deck, tagMap), [deck, tagMap]);
   const benchmarkScores = React.useMemo(() => deckBenchmarkScores(deck), [deck]);
   const violations = React.useMemo(() => colorIdentityViolations(deck), [deck]);
   const curveOdds = React.useMemo(() => simulateCurveProbabilities(deck, 1200), [
@@ -400,7 +400,7 @@ export function OverviewTab({
                         : "rounded border border-border/80 bg-muted/25 px-2 py-1.5 text-muted-foreground"
                   }
                 >
-                  {w.text}
+                  • {w.text}
                 </div>
               ))
             )}

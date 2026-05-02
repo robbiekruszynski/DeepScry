@@ -256,6 +256,175 @@ const COLOR_STAPLES: Record<ManaColor, string[]> = {
   ],
 };
 
+const OPTIMIZED_COLORLESS = [
+  "Sol Ring",
+  "Arcane Signet",
+  "Fellwar Stone",
+  "The One Ring",
+  "Skullclamp",
+  "Lightning Greaves",
+  "Swiftfoot Boots",
+  "Sensei's Divining Top",
+];
+
+const CEDH_COLORLESS = [
+  "Mana Crypt",
+  "Sol Ring",
+  "Mana Vault",
+  "Chrome Mox",
+  "Mox Diamond",
+  "Mox Opal",
+  "Lotus Petal",
+  "Jeweled Lotus",
+  "Grim Monolith",
+  "The One Ring",
+  "Sensei's Divining Top",
+  "Walking Ballista",
+  "Aetherflux Reservoir",
+];
+
+const OPTIMIZED_COLOR_STAPLES: Record<ManaColor, string[]> = {
+  W: [
+    "Esper Sentinel",
+    "Swords to Plowshares",
+    "Path to Exile",
+    "Enlightened Tutor",
+    "Silence",
+    "Grand Abolisher",
+    "Smothering Tithe",
+    "Teferi's Protection",
+  ],
+  U: [
+    "Mystic Remora",
+    "Rhystic Study",
+    "Swan Song",
+    "Counterspell",
+    "Pact of Negation",
+    "Mystical Tutor",
+    "Cyclonic Rift",
+    "Ponder",
+    "Preordain",
+    "Thassa's Oracle",
+  ],
+  B: [
+    "Demonic Tutor",
+    "Vampiric Tutor",
+    "Diabolic Intent",
+    "Tainted Pact",
+    "Demonic Consultation",
+    "Toxic Deluge",
+    "Necropotence",
+    "Reanimate",
+    "Dark Ritual",
+  ],
+  R: [
+    "Dockside Extortionist",
+    "Jeska's Will",
+    "Deflecting Swat",
+    "Gamble",
+    "Underworld Breach",
+    "Wheel of Fortune",
+    "Pyroblast",
+    "Red Elemental Blast",
+  ],
+  G: [
+    "Birds of Paradise",
+    "Delighted Halfling",
+    "Worldly Tutor",
+    "Veil of Summer",
+    "Finale of Devastation",
+    "Nature's Claim",
+    "Heroic Intervention",
+    "Carpet of Flowers",
+  ],
+};
+
+const CEDH_COLOR_STAPLES: Record<ManaColor, string[]> = {
+  W: [
+    "Esper Sentinel",
+    "Swords to Plowshares",
+    "Path to Exile",
+    "Enlightened Tutor",
+    "Silence",
+    "Grand Abolisher",
+    "Ranger-Captain of Eos",
+    "Drannith Magistrate",
+    "Archivist of Oghma",
+    "Teferi's Protection",
+  ],
+  U: [
+    "Thassa's Oracle",
+    "Force of Will",
+    "Force of Negation",
+    "Fierce Guardianship",
+    "Pact of Negation",
+    "Mana Drain",
+    "Swan Song",
+    "Flusterstorm",
+    "Mystical Tutor",
+    "Brainstorm",
+    "Ponder",
+    "Preordain",
+    "Mystic Remora",
+    "Rhystic Study",
+    "Cyclonic Rift",
+  ],
+  B: [
+    "Demonic Tutor",
+    "Vampiric Tutor",
+    "Imperial Seal",
+    "Diabolic Intent",
+    "Demonic Consultation",
+    "Tainted Pact",
+    "Ad Nauseam",
+    "Necropotence",
+    "Dark Ritual",
+    "Cabal Ritual",
+    "Opposition Agent",
+    "Toxic Deluge",
+    "Deadly Rollick",
+    "Reanimate",
+    "Entomb",
+    "Thoughtseize",
+  ],
+  R: [
+    "Dockside Extortionist",
+    "Deflecting Swat",
+    "Jeska's Will",
+    "Wheel of Fortune",
+    "Gamble",
+    "Underworld Breach",
+    "Grinding Station",
+    "Pyroblast",
+    "Red Elemental Blast",
+    "Rite of Flame",
+    "Simian Spirit Guide",
+    "Twinflame",
+    "Dualcaster Mage",
+  ],
+  G: [
+    "Birds of Paradise",
+    "Delighted Halfling",
+    "Elvish Spirit Guide",
+    "Carpet of Flowers",
+    "Veil of Summer",
+    "Worldly Tutor",
+    "Finale of Devastation",
+    "Green Sun's Zenith",
+    "Noxious Revival",
+    "Allosaurus Shepherd",
+    "Collector Ouphe",
+    "Nature's Claim",
+    "Heroic Intervention",
+  ],
+};
+
+const CEDH_GENERIC_WINCONS = [
+  "Laboratory Maniac",
+  "Jace, Wielder of Mysteries",
+  "Walking Ballista",
+];
+
 const BUDGET_EXCLUSIONS: Record<BudgetTier, Set<string>> = {
   budget: new Set([
     "Cyclonic Rift",
@@ -301,6 +470,118 @@ function uniqueCards(cards: string[], budget: BudgetTier, commanderName: string)
   });
 }
 
+function tierStaples(powerLevel: PowerLevel, pickedColors: ManaColor[]) {
+  if (powerLevel === "cedh") {
+    return [
+      ...CEDH_COLORLESS,
+      ...pickedColors.flatMap((color) => CEDH_COLOR_STAPLES[color]),
+      ...CEDH_GENERIC_WINCONS,
+      ...OPTIMIZED_COLORLESS,
+      ...pickedColors.flatMap((color) => OPTIMIZED_COLOR_STAPLES[color]),
+      ...COLORLESS_STAPLES,
+      ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
+    ];
+  }
+
+  if (powerLevel === "optimized") {
+    return [
+      ...OPTIMIZED_COLORLESS,
+      ...pickedColors.flatMap((color) => OPTIMIZED_COLOR_STAPLES[color]),
+      ...COLORLESS_STAPLES,
+      ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
+    ];
+  }
+
+  return [
+    ...COLORLESS_STAPLES,
+    ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
+  ];
+}
+
+const FETCH_LANDS = [
+  "Flooded Strand",
+  "Polluted Delta",
+  "Bloodstained Mire",
+  "Wooded Foothills",
+  "Windswept Heath",
+  "Marsh Flats",
+  "Scalding Tarn",
+  "Verdant Catacombs",
+  "Arid Mesa",
+  "Misty Rainforest",
+];
+
+const PAIR_LANDS: Record<string, { shock: string; bond: string; pain: string; dual: string }> = {
+  WU: { shock: "Hallowed Fountain", bond: "Sea of Clouds", pain: "Adarkar Wastes", dual: "Tundra" },
+  UB: { shock: "Watery Grave", bond: "Morphic Pool", pain: "Underground River", dual: "Underground Sea" },
+  BR: { shock: "Blood Crypt", bond: "Luxury Suite", pain: "Sulfurous Springs", dual: "Badlands" },
+  RG: { shock: "Stomping Ground", bond: "Spire Garden", pain: "Karplusan Forest", dual: "Taiga" },
+  WG: { shock: "Temple Garden", bond: "Bountiful Promenade", pain: "Brushland", dual: "Savannah" },
+  WB: { shock: "Godless Shrine", bond: "Vault of Champions", pain: "Caves of Koilos", dual: "Scrubland" },
+  UR: { shock: "Steam Vents", bond: "Training Center", pain: "Shivan Reef", dual: "Volcanic Island" },
+  BG: { shock: "Overgrown Tomb", bond: "Undergrowth Stadium", pain: "Llanowar Wastes", dual: "Bayou" },
+  UG: { shock: "Breeding Pool", bond: "Rejuvenating Springs", pain: "Yavimaya Coast", dual: "Tropical Island" },
+  WR: { shock: "Sacred Foundry", bond: "Spectator Seating", pain: "Battlefield Forge", dual: "Plateau" },
+};
+
+function colorPairs(colors: ManaColor[]) {
+  const order = ["W", "U", "B", "R", "G"] as ManaColor[];
+  const picked = order.filter((color) => colors.includes(color));
+  const pairs: string[] = [];
+  for (let i = 0; i < picked.length; i++) {
+    for (let j = i + 1; j < picked.length; j++) {
+      pairs.push(`${picked[i]}${picked[j]}`);
+    }
+  }
+  return pairs;
+}
+
+function landPackage(powerLevel: PowerLevel, budget: BudgetTier, colors: ManaColor[], landTarget: number) {
+  const pairLands = colorPairs(colors).flatMap((pair) => {
+    const lands = PAIR_LANDS[pair];
+    if (!lands) return [];
+    if (powerLevel === "cedh" || budget === "cedh") {
+      return [lands.dual, lands.shock, lands.bond, lands.pain];
+    }
+    if (powerLevel === "optimized" || budget === "optimized") {
+      return [lands.shock, lands.bond, lands.pain];
+    }
+    if (budget === "upgraded") {
+      return [lands.shock, lands.pain];
+    }
+    return [lands.pain];
+  });
+
+  const premiumUtility =
+    powerLevel === "cedh"
+      ? [
+          "Command Tower",
+          "City of Brass",
+          "Mana Confluence",
+          "Exotic Orchard",
+          "Gemstone Caverns",
+          "Ancient Tomb",
+          "Forbidden Orchard",
+          "Gemstone Mine",
+          "Reflecting Pool",
+          ...FETCH_LANDS,
+        ]
+      : [
+          "Command Tower",
+          "Exotic Orchard",
+          "Path of Ancestry",
+          "Opal Palace",
+          "Evolving Wilds",
+          "Terramorphic Expanse",
+          "Myriad Landscape",
+          "Reliquary Tower",
+          "Rogue's Passage",
+          "Temple of the False God",
+        ];
+
+  return uniqueCards([...premiumUtility, ...pairLands], budget, "").slice(0, landTarget);
+}
+
 export function generateCommanderSample({
   colors,
   commanderName,
@@ -315,31 +596,19 @@ export function generateCommanderSample({
   const pickedColors = colors.length ? colors : (["B", "G", "U"] as ManaColor[]);
   const key = colorKey(pickedColors);
   const commander = commanderName?.trim() || POPULAR_COMMANDERS[key] || POPULAR_COMMANDERS.BGU;
-  const landTarget = powerLevel === "cedh" ? 31 : powerLevel === "optimized" ? 34 : 37;
+  const landTarget =
+    powerLevel === "cedh"
+      ? 31
+      : powerLevel === "optimized"
+        ? 34
+        : powerLevel === "focused"
+          ? 36
+          : 38;
   const nonlandTarget = 100 - landTarget;
-  const pool = uniqueCards(
-    [
-      ...COLORLESS_STAPLES,
-      ...pickedColors.flatMap((color) => COLOR_STAPLES[color]),
-      ...(powerLevel === "cedh" ? ["Thassa's Oracle", "Laboratory Maniac"] : []),
-    ],
-    budget,
-    commander
-  );
+  const pool = uniqueCards(tierStaples(powerLevel, pickedColors), budget, commander);
   const spells = pool.slice(0, nonlandTarget - 1);
-  const nonbasicLands = [
-    "Command Tower",
-    "Exotic Orchard",
-    "Path of Ancestry",
-    "Opal Palace",
-    "Evolving Wilds",
-    "Terramorphic Expanse",
-    "Myriad Landscape",
-    "Reliquary Tower",
-    "Rogue's Passage",
-    "Temple of the False God",
-  ].slice(0, Math.min(10, landTarget - pickedColors.length));
-  const basicsNeeded = landTarget - nonbasicLands.length;
+  const nonbasicLands = landPackage(powerLevel, budget, pickedColors, landTarget);
+  const basicsNeeded = Math.max(0, landTarget - nonbasicLands.length);
   const basicLines = pickedColors.map((color, idx) => {
     const base = Math.floor(basicsNeeded / pickedColors.length);
     const extra = idx < basicsNeeded % pickedColors.length ? 1 : 0;

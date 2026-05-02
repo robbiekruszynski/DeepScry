@@ -55,14 +55,35 @@ export function isRamp(card: ScryfallCard) {
 
 export function isInteraction(card: ScryfallCard) {
   if (isLand(card)) return false;
+  const name = card.name.toLowerCase();
   const text = (card.oracle_text ?? "").toLowerCase();
+
+  const knownInteraction = [
+    "collector ouphe",
+    "deflecting swat",
+    "drannith magistrate",
+    "grand abolisher",
+    "opposition agent",
+    "pyroblast",
+    "red elemental blast",
+    "silence",
+    "thoughtseize",
+    "veil of summer",
+  ];
+
+  if (knownInteraction.includes(name)) return true;
 
   const patterns: RegExp[] = [
     /\bcounter target\b/,
+    /\bchange the target\b/,
     /\bdestroy target\b/,
     /\bexile target\b/,
     /\bdeals? \d+ damage to target\b/,
+    /\btarget opponent reveals their hand\b/,
     /\breturn target\b.*\bto (its owner's hand|their hand)\b/,
+    /\bopponents can't\b/,
+    /\byour opponents can't\b/,
+    /\bcan't cast spells\b/,
     /\bprevent all damage\b/,
   ];
   return patterns.some((p) => p.test(text));
@@ -81,11 +102,14 @@ export function isWinconHeuristic(card: ScryfallCard) {
 
   const knownWincons = [
     "approach of the second sun",
+    "aetherflux reservoir",
     "bitter ordeal",
     "exquisite blood",
+    "jace, wielder of mysteries",
     "laboratory maniac",
     "revel in riches",
     "thassa's oracle",
+    "walking ballista",
   ];
 
   if (knownWincons.includes(name)) return true;
