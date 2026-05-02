@@ -292,73 +292,74 @@ export function HandTab({
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Opening hand spread</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max items-end px-1 py-3">
-              {hand.map((card, idx) => {
-                const center = (hand.length - 1) / 2;
-                const offsetFromCenter = idx - center;
-                const angle = offsetFromCenter * 2.8;
-                const lift = Math.abs(offsetFromCenter) * 2;
-                const imageState = getImageState(card);
-                const imageUrl = imageState?.url ?? CARD_BACK_URL;
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <div className="pb-2">
+              <div className="flex flex-wrap items-end justify-center gap-2 px-1 py-3">
+                {hand.map((card, idx) => {
+                  const center = (hand.length - 1) / 2;
+                  const offsetFromCenter = idx - center;
+                  const angle = offsetFromCenter * 1.4;
+                  const lift = Math.min(Math.abs(offsetFromCenter) * 1.5, 8);
+                  const imageState = getImageState(card);
+                  const imageUrl = imageState?.url ?? CARD_BACK_URL;
 
-                return (
-                  <div
-                    key={`${card.id}-${idx}`}
-                    className="relative transition-transform duration-200 hover:z-20 hover:-translate-y-3"
-                    style={{
-                      marginLeft: idx === 0 ? 0 : -54,
-                      transform: `translateY(${lift}px) rotate(${angle}deg)`,
-                    }}
-                    onMouseEnter={() => setHoveredCard(card)}
-                  >
-                    <div className="w-[170px] overflow-hidden rounded-xl border bg-card shadow-md">
-                      <div className="relative">
-                        <img
-                          src={imageUrl}
-                          alt={card.name}
-                          className="h-[238px] w-full object-cover transform-[translateZ(0)]"
-                          loading="eager"
-                          fetchPriority="high"
-                          draggable={false}
-                          onError={(event) => {
-                            event.currentTarget.src = CARD_BACK_URL;
-                          }}
-                        />
-                        {imageState?.loading ? (
-                          <div className="absolute inset-0 animate-pulse bg-background/20" />
-                        ) : null}
+                  return (
+                    <div
+                      key={`${card.id}-${idx}`}
+                      className="group relative transition duration-200 hover:z-20"
+                      style={{
+                        transform: `translateY(${lift}px) rotate(${angle}deg)`,
+                      }}
+                      onMouseEnter={() => setHoveredCard(card)}
+                    >
+                      <div className="w-[104px] overflow-hidden rounded-xl border bg-card shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-lg sm:w-[116px] xl:w-[124px]">
+                        <div className="relative">
+                          <img
+                            src={imageUrl}
+                            alt={card.name}
+                            className="aspect-5/7 w-full object-cover transform-[translateZ(0)]"
+                            loading="eager"
+                            fetchPriority="high"
+                            draggable={false}
+                            onError={(event) => {
+                              event.currentTarget.src = CARD_BACK_URL;
+                            }}
+                          />
+                          {imageState?.loading ? (
+                            <div className="absolute inset-0 animate-pulse bg-background/20" />
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="max-w-sm rounded-lg border bg-muted/20 p-2">
-            {hoveredCard ? (
-              <img
-                src={getImageState(hoveredCard)?.url ?? CARD_BACK_URL}
-                alt={hoveredCard?.name ?? "Card preview"}
-                className="mx-auto h-auto max-h-[480px] w-auto rounded-md border object-contain"
-                onError={(event) => {
-                  event.currentTarget.src = CARD_BACK_URL;
-                }}
-              />
-            ) : (
-              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-                Hover a card in the spread to preview it.
+                  );
+                })}
               </div>
-            )}
-            <div className="mt-2 text-sm">
-              <div className="font-medium">{hoveredCard?.name ?? "Card preview"}</div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-2">
               {hoveredCard ? (
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {hoveredCard.type_line}
+                <img
+                  src={getImageState(hoveredCard)?.url ?? CARD_BACK_URL}
+                  alt={hoveredCard?.name ?? "Card preview"}
+                  className="mx-auto h-auto max-h-[460px] w-auto rounded-md border object-contain"
+                  onError={(event) => {
+                    event.currentTarget.src = CARD_BACK_URL;
+                  }}
+                />
+              ) : (
+                <div className="flex min-h-[320px] items-center justify-center px-2 text-center text-sm text-muted-foreground">
+                  Hover a card in the spread to preview it.
                 </div>
-              ) : null}
+              )}
+              <div className="mt-2 text-sm">
+                <div className="font-medium">{hoveredCard?.name ?? "Card preview"}</div>
+                {hoveredCard ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {hoveredCard.type_line}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </CardContent>

@@ -40,9 +40,10 @@ async function retryAfterBackoff(attempt: number) {
 export async function GET(req: NextRequest) {
   const fuzzy = req.nextUrl.searchParams.get("fuzzy")?.trim();
   const id = req.nextUrl.searchParams.get("id")?.trim();
-  if (!fuzzy && !id) {
+  const commander = req.nextUrl.searchParams.get("commander")?.trim();
+  if (!fuzzy && !id && !commander) {
     return NextResponse.json(
-      { error: "Missing fuzzy or id query parameter." },
+      { error: "Missing fuzzy, id, or commander query parameter." },
       { status: 400 }
     );
   }
@@ -52,7 +53,9 @@ export async function GET(req: NextRequest) {
 
     const url = id
       ? `https://api.scryfall.com/cards/${encodeURIComponent(id)}`
-      : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy!)}`;
+      : commander
+        ? `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(`name:${commander} is:commander`)}`
+        : `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(fuzzy!)}`;
     let { res, text } = await fetchFromScryfall(url);
 
     if (res.status === 429) {
@@ -71,6 +74,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (!res.ok) {
+      if (commander && res.status === 404) {
+        return NextResponse.json({ data: [] });
+      }
       return NextResponse.json(
         { error: text || res.statusText, status: res.status, details: text },
         { status: res.status }

@@ -27,6 +27,12 @@ import {
 
 type TabKey = "overview" | "hand" | "curve" | "probabilities" | "import";
 
+type CommanderSuggestion = {
+  id: string;
+  name: string;
+  type_line: string;
+};
+
 const MANA_PIPS: Record<ManaColor, { src: string; label: string }> = {
   W: { src: "https://svgs.scryfall.io/card-symbols/W.svg", label: "White" },
   U: { src: "https://svgs.scryfall.io/card-symbols/U.svg", label: "Blue" },
@@ -47,6 +53,11 @@ export function ScryApp() {
   const [sampleError, setSampleError] = React.useState<string | null>(null);
   const [selectedColors, setSelectedColors] = React.useState<ManaColor[]>([]);
   const [sampleCommander, setSampleCommander] = React.useState("");
+  const [commanderSuggestions, setCommanderSuggestions] = React.useState<
+    CommanderSuggestion[]
+  >([]);
+  const [isCommanderSearching, setIsCommanderSearching] = React.useState(false);
+  const [isCommanderListOpen, setIsCommanderListOpen] = React.useState(false);
   const [sampleBudget, setSampleBudget] = React.useState<BudgetTier>("budget");
   const [samplePowerLevel, setSamplePowerLevel] = React.useState<PowerLevel>("casual");
   const [importDraftLoaded, setImportDraftLoaded] = React.useState(false);
@@ -91,6 +102,44 @@ export function ScryApp() {
       );
     } catch {}
   }, [importText, commanderName, archetype, importDraftLoaded]);
+
+  React.useEffect(() => {
+    const query = sampleCommander.trim();
+    if (!query) {
+      setCommanderSuggestions([]);
+      setIsCommanderSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCommanderSearching(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/scryfall/card?commander=${encodeURIComponent(query)}`,
+          { headers: { Accept: "application/json" }, cache: "no-store" }
+        );
+        if (!res.ok) throw new Error(`Commander search failed: ${res.status}`);
+        const json = (await res.json()) as { data?: CommanderSuggestion[] };
+        if (cancelled) return;
+        setCommanderSuggestions((json.data ?? []).slice(0, 20).map((card) => ({
+          id: String(card.id),
+          name: String(card.name),
+          type_line: String(card.type_line ?? ""),
+        })));
+      } catch {
+        if (!cancelled) setCommanderSuggestions([]);
+      } finally {
+        if (!cancelled) setIsCommanderSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [sampleCommander]);
 
   const removeCard = React.useCallback((cardId: string) => {
     setDeck((prev) => {
@@ -321,12 +370,54 @@ export function ScryApp() {
                           <div className="text-xs font-medium text-foreground">
                             Commander search
                           </div>
-                          <Input
-                            value={sampleCommander}
-                            onChange={(event) => setSampleCommander(event.target.value)}
-                            placeholder="Optional, e.g. Aesi, Tyrant of Gyre Strait"
-                            disabled={isSampleImporting}
-                          />
+                          <div className="relative">
+                            <Input
+                              value={sampleCommander}
+                              onChange={(event) => {
+                                setSampleCommander(event.target.value);
+                                setIsCommanderListOpen(true);
+                              }}
+                              onFocus={() => setIsCommanderListOpen(true)}
+                              onBlur={() => {
+                                window.setTimeout(() => setIsCommanderListOpen(false), 120);
+                              }}
+                              placeholder="Optional, e.g. Aesi, Tyrant of Gyre Strait"
+                              disabled={isSampleImporting}
+                              autoComplete="off"
+                            />
+                            {isCommanderListOpen && sampleCommander.trim() ? (
+                              <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border bg-popover p-1 text-sm shadow-lg">
+                                {isCommanderSearching ? (
+                                  <div className="px-2 py-2 text-xs text-muted-foreground">
+                                    Searching commanders...
+                                  </div>
+                                ) : commanderSuggestions.length ? (
+                                  commanderSuggestions.map((card) => (
+                                    <button
+                                      key={card.id}
+                                      type="button"
+                                      className="block w-full rounded-md px-2 py-2 text-left hover:bg-muted"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => {
+                                        setSampleCommander(card.name);
+                                        setCommanderSuggestions([]);
+                                        setIsCommanderListOpen(false);
+                                      }}
+                                    >
+                                      <div className="font-medium text-foreground">{card.name}</div>
+                                      <div className="truncate text-xs text-muted-foreground">
+                                        {card.type_line}
+                                      </div>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="px-2 py-2 text-xs text-muted-foreground">
+                                    No commander matches found.
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <div className="text-xs font-medium text-foreground">Budget</div>
