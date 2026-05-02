@@ -27,6 +27,14 @@ import {
 
 type TabKey = "overview" | "hand" | "curve" | "probabilities" | "import";
 
+const MANA_PIPS: Record<ManaColor, { src: string; label: string }> = {
+  W: { src: "https://svgs.scryfall.io/card-symbols/W.svg", label: "White" },
+  U: { src: "https://svgs.scryfall.io/card-symbols/U.svg", label: "Blue" },
+  B: { src: "https://svgs.scryfall.io/card-symbols/B.svg", label: "Black" },
+  R: { src: "https://svgs.scryfall.io/card-symbols/R.svg", label: "Red" },
+  G: { src: "https://svgs.scryfall.io/card-symbols/G.svg", label: "Green" },
+};
+
 export function ScryApp() {
   const [hasEntered, setHasEntered] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
@@ -37,7 +45,7 @@ export function ScryApp() {
   const [archetype, setArchetype] = React.useState<DeckArchetype>("midrange");
   const [isSampleImporting, setIsSampleImporting] = React.useState(false);
   const [sampleError, setSampleError] = React.useState<string | null>(null);
-  const [selectedColors, setSelectedColors] = React.useState<ManaColor[]>(["B", "G", "U"]);
+  const [selectedColors, setSelectedColors] = React.useState<ManaColor[]>([]);
   const [sampleCommander, setSampleCommander] = React.useState("");
   const [sampleBudget, setSampleBudget] = React.useState<BudgetTier>("budget");
   const [samplePowerLevel, setSamplePowerLevel] = React.useState<PowerLevel>("casual");
@@ -291,11 +299,20 @@ export function ScryApp() {
                                 key={color}
                                 type="button"
                                 variant={selectedColors.includes(color) ? "default" : "outline"}
-                                size="sm"
+                                size="icon"
                                 onClick={() => toggleSampleColor(color)}
                                 disabled={isSampleImporting}
+                                aria-label={`Toggle ${MANA_PIPS[color].label} sample color`}
+                                title={MANA_PIPS[color].label}
                               >
-                                {color}
+                                <img
+                                  src={MANA_PIPS[color].src}
+                                  alt=""
+                                  className="h-5 w-5"
+                                  height={20}
+                                  width={20}
+                                  aria-hidden
+                                />
                               </Button>
                             ))}
                           </div>
