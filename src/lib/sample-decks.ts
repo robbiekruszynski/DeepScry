@@ -241,29 +241,29 @@ const UNIVERSAL_STAPLES = ["Sol Ring", "Command Tower", "Arcane Signet"];
 // that are broadly useful regardless of strategy. They keep the deck from being
 // padded with dozens of basic lands.
 
+// Only truly colorless cards here — artifacts, colorless lands, and colorless
+// creatures. Color-restricted staples live in COLOR_FALLBACK_SPELLS so they're
+// never added to a deck whose commander doesn't share that color identity.
 const UNIVERSAL_FALLBACK_SPELLS = [
-  // Ramp
+  // Mana rocks / ramp
   "Wayfarer's Bauble", "Burnished Hart", "Mind Stone", "Thought Vessel",
   "Commander's Sphere", "Solemn Simulacrum", "Chromatic Lantern",
-  // Utility non-basic lands (treated as spells here; they'll be EDHREC land picks normally)
-  "Exotic Orchard", "Reliquary Tower", "Myriad Landscape",
-  "Evolving Wilds", "Terramorphic Expanse",
-  // Card draw / filtering
-  "Lifecrafter's Bestiary", "Skullclamp", "Staff of Nin",
-  // Removal
-  "Chaos Warp", "Generous Gift",
-  // Protection
-  "Swiftfoot Boots", "Lightning Greaves",
-  // Recursion
-  "Eternal Witness", "Regrowth", "Reclaim",
+  "Fellwar Stone", "Darksteel Ingot",
+  // Utility lands (colorless)
+  "Reliquary Tower", "Myriad Landscape", "Evolving Wilds", "Terramorphic Expanse",
+  // Card draw
+  "Skullclamp", "Staff of Nin", "Lifecrafter's Bestiary",
+  // Protection / equipment
+  "Lightning Greaves", "Swiftfoot Boots",
+  // Broadly useful colorless creatures
+  "Ornithopter of Paradise", "Burnished Hart",
 ];
 
 const COLOR_FALLBACK_SPELLS: Record<ManaColor, string[]> = {
   W: [
     "Swords to Plowshares", "Path to Exile", "Wrath of God", "Day of Judgment",
-    "Return to Dust", "Austere Command", "Smothering Tithe",
-    "Sun Titan", "Teferi's Protection", "Cathars' Crusade",
-    "Mentor of the Meek", "Requiem Angel",
+    "Return to Dust", "Austere Command", "Smothering Tithe", "Generous Gift",
+    "Sun Titan", "Teferi's Protection", "Cathars' Crusade", "Mentor of the Meek",
   ],
   U: [
     "Counterspell", "Negate", "Swan Song", "Arcane Denial",
@@ -275,18 +275,19 @@ const COLOR_FALLBACK_SPELLS: Record<ManaColor, string[]> = {
     "Sign in Blood", "Night's Whisper", "Read the Bones",
     "Reanimate", "Animate Dead", "Feed the Swarm",
     "Shriekmaw", "Gray Merchant of Asphodel", "Phyrexian Arena",
-    "Bolas's Citadel", "Deadly Rollick", "Diabolic Intent",
+    "Deadly Rollick", "Diabolic Intent", "Bolas's Citadel",
   ],
   R: [
     "Blasphemous Act", "Jeska's Will", "Deflecting Swat",
     "Vandalblast", "Faithless Looting", "Dualcaster Mage",
-    "Dragon Tempest", "Terrorfire", "Mizzium Mortars",
+    "Dragon Tempest", "Chaos Warp", "Mizzium Mortars",
+    "Goblin Bombardment", "Torbran, Thane of Red Fell",
   ],
   G: [
     "Kodama's Reach", "Cultivate", "Rampant Growth", "Farseek",
     "Nature's Lore", "Three Visits", "Llanowar Elves", "Elvish Mystic",
     "Birds of Paradise", "Beast Within", "Heroic Intervention",
-    "Sylvan Library", "Selvala, Heart of the Wilds",
+    "Sylvan Library", "Eternal Witness", "Regrowth",
   ],
 };
 
