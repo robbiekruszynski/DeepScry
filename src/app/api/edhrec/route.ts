@@ -16,6 +16,7 @@ export type EdhrecCard = {
   inclusion: number; // percentage 0-100
   synergy: number;   // synergy score (-1 to 1)
   price: number | null;
+  is_land: boolean;  // true when EDHREC classifies this card as a land
 };
 
 export type EdhrecResponse = {
@@ -24,6 +25,34 @@ export type EdhrecResponse = {
   cards: EdhrecCard[];
   error?: string;
 };
+
+function parseCardlist(
+  rawList: unknown[],
+  landNames: Set<string>
+): EdhrecCard[] {
+  return rawList
+    .map((raw: unknown) => {
+      const c = raw as Record<string, unknown>;
+      const name = String(c.name ?? "");
+      if (!name) return null;
+
+      // EDHREC sometimes exposes a "label" field (e.g. "Lands", "Ramp", etc.)
+      const label = String(c.label ?? "").toLowerCase();
+      const isLandByLabel = label.includes("land");
+
+      return {
+        name,
+        sanitized: String(c.sanitized ?? name.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
+        num_decks: Number(c.num_decks ?? 0),
+        potential_decks: Number(c.potential_decks ?? 0),
+        inclusion: Number(c.inclusion ?? 0),
+        synergy: Number(c.synergy ?? 0),
+        price: c.price != null ? Number(c.price) : null,
+        is_land: isLandByLabel || landNames.has(name),
+      } satisfies EdhrecCard;
+    })
+    .filter((c): c is EdhrecCard => c !== null);
+}
 
 export async function GET(req: NextRequest) {
   const commander = req.nextUrl.searchParams.get("commander");
@@ -48,33 +77,36 @@ export async function GET(req: NextRequest) {
     }
 
     const json = await res.json() as Record<string, unknown>;
-
-    // EDHREC JSON structure: container.json_dict.cardlist
-    const cardlist = (
+    const jsonDict = (
       (json?.container as Record<string, unknown>)?.json_dict as Record<string, unknown>
-    )?.cardlist as unknown[] | undefined;
+    ) ?? {};
 
+    // Build a Set of land card names by scanning all panel sections first.
+    // EDHREC organises recommendations into typed panels (Creatures, Lands, etc.).
+    // We use this to correctly mark which recommended cards are lands so that
+    // deck generation can keep land counts realistic.
+    const landNames = new Set<string>();
+    const panels = jsonDict?.panels as unknown[] | undefined;
+    if (Array.isArray(panels)) {
+      for (const panel of panels) {
+        const p = panel as Record<string, unknown>;
+        const tag = String(p.tag ?? p.title ?? "").toLowerCase();
+        if (!tag.includes("land")) continue;
+        const panelList = p.cardlist as unknown[] | undefined;
+        if (!Array.isArray(panelList)) continue;
+        for (const card of panelList) {
+          const name = String((card as Record<string, unknown>).name ?? "");
+          if (name) landNames.add(name);
+        }
+      }
+    }
+
+    const cardlist = jsonDict?.cardlist as unknown[] | undefined;
     if (!Array.isArray(cardlist)) {
       return NextResponse.json({ error: "Unexpected EDHREC response shape", cards: [] }, { status: 200 });
     }
 
-    const cards: EdhrecCard[] = cardlist
-      .map((raw: unknown) => {
-        const c = raw as Record<string, unknown>;
-        const name = String(c.name ?? "");
-        if (!name) return null;
-        return {
-          name,
-          sanitized: String(c.sanitized ?? name.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
-          num_decks: Number(c.num_decks ?? 0),
-          potential_decks: Number(c.potential_decks ?? 0),
-          inclusion: Number(c.inclusion ?? 0),
-          synergy: Number(c.synergy ?? 0),
-          price: c.price != null ? Number(c.price) : null,
-        } satisfies EdhrecCard;
-      })
-      .filter((c): c is EdhrecCard => c !== null);
-
+    const cards = parseCardlist(cardlist, landNames);
     return NextResponse.json({ commander, slug, cards } satisfies EdhrecResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

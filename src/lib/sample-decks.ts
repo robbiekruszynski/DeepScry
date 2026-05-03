@@ -13,98 +13,6 @@ export const BUDGET_PRICE_CAPS: Record<BudgetTier, number | null> = {
   cedh: null,
 };
 
-export const WISE_MOTHMAN_SAMPLE = {
-  name: "The Wise Mothman Sultai sample",
-  commanderName: "The Wise Mothman",
-  archetype: "midrange" as DeckArchetype,
-  decklist: `1 The Wise Mothman
-1 Command Tower
-1 Exotic Orchard
-1 Opulent Palace
-1 Zagoth Triome
-1 Breeding Pool
-1 Watery Grave
-1 Overgrown Tomb
-1 Hinterland Harbor
-1 Drowned Catacomb
-1 Woodland Cemetery
-1 Yavimaya Coast
-1 Underground River
-1 Llanowar Wastes
-1 Temple of Mystery
-1 Temple of Deceit
-1 Temple of Malady
-1 Bojuka Bog
-1 Reliquary Tower
-1 Evolving Wilds
-1 Terramorphic Expanse
-1 Myriad Landscape
-6 Forest
-6 Island
-5 Swamp
-1 Sol Ring
-1 Arcane Signet
-1 Fellwar Stone
-1 Dimir Signet
-1 Simic Signet
-1 Golgari Signet
-1 Talisman of Dominance
-1 Cultivate
-1 Kodama's Reach
-1 Farseek
-1 Sakura-Tribe Elder
-1 Birds of Paradise
-1 Llanowar Elves
-1 Elvish Mystic
-1 Fyndhorn Elves
-1 Coiling Oracle
-1 Baleful Strix
-1 Eternal Witness
-1 Solemn Simulacrum
-1 Muldrotha, the Gravetide
-1 Syr Konrad, the Grim
-1 Consuming Aberration
-1 Wonder
-1 Brawn
-1 Acidic Slime
-1 Evolution Sage
-1 Winding Constrictor
-1 Forgotten Ancient
-1 Corpsejack Menace
-1 Laboratory Maniac
-1 Thassa's Oracle
-1 Scute Swarm
-1 Seedborn Muse
-1 Beast Whisperer
-1 Tatyova, Benthic Druid
-1 Mesmeric Orb
-1 Altar of Dementia
-1 Fraying Sanity
-1 Sphinx's Tutelage
-1 Mindcrank
-1 Revel in Riches
-1 Exquisite Blood
-1 Doubling Season
-1 Hardened Scales
-1 Branching Evolution
-1 Lightning Greaves
-1 Assassin's Trophy
-1 Beast Within
-1 Putrefy
-1 Counterspell
-1 Swan Song
-1 Arcane Denial
-1 Reality Shift
-1 Toxic Deluge
-1 Casualties of War
-1 Cyclonic Rift
-1 Rhystic Study
-1 Mystic Remora
-1 Fact or Fiction
-1 Regrowth
-1 Living Death`,
-};
-
 // ── Commander pools ──────────────────────────────────────────────────────────
 // Four tiers per color identity so the picked commander matches the expected
 // power level. Random selection within a tier gives variety on repeated rolls.
@@ -128,7 +36,7 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   U: {
     casual:    ["Talrand, Sky Summoner", "Orvar, the All-Form", "Rayne, Academy Chancellor", "Brudiclad, Telchor Engineer"],
     focused:   ["Baral, Chief of Compliance", "Teferi, Temporal Archmage", "Jalira, Master Polymorphist"],
-    optimized: ["Urza, Lord High Artificer", "Malcolm, Keen-Eyed Navigator", "Sai, Master Thopterist"],
+    optimized: ["Urza, Lord High Artificer", "Sai, Master Thopterist"],
     cedh:      ["Urza, Lord High Artificer", "Baral, Chief of Compliance"],
   },
   B: {
@@ -140,7 +48,7 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   R: {
     casual:    ["Krenko, Mob Boss", "Purphoros, God of the Forge", "Pia Nalaar", "Wulfgar of Icewind Dale"],
     focused:   ["Magda, Brazen Outlaw", "Grenzo, Havoc Raiser", "Etali, Primal Storm"],
-    optimized: ["Daretti, Scrap Savant", "Valduk, Keeper of the Flame", "Laelia, the Blade Reforged"],
+    optimized: ["Daretti, Scrap Savant", "Laelia, the Blade Reforged"],
     cedh:      ["Zada, Hedron Grinder", "Dargo, the Shipwrecker"],
   },
   G: {
@@ -151,10 +59,10 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   },
   // ─ Two-color ─────────────────────────────────────────────────────────────
   WU: {
-    casual:    ["Brago, King Eternal", "Raff Capashen, Ship's Mage", "Soulherder"],
+    casual:    ["Brago, King Eternal", "Raff Capashen, Ship's Mage", "Kangee, Aerie Keeper"],
     focused:   ["Ephara, God of the Polis", "Isperia, Supreme Judge", "Lavinia, Azorius Renegade"],
-    optimized: ["Yorion, Sky Nomad", "Hanna, Ship's Navigator"],
-    cedh:      ["Brago, King Eternal", "Raff Capashen, Ship's Mage"],
+    optimized: ["Hanna, Ship's Navigator", "Shorikai, Genesis Engine"],
+    cedh:      ["Brago, King Eternal"],
   },
   WB: {
     casual:    ["Teysa, Orzhov Scion", "Kambal, Consul of Allocation", "Athreos, God of Passage"],
@@ -164,14 +72,14 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   },
   WR: {
     casual:    ["Tajic, Legion's Edge", "Aurelia, the Warleader", "Iroas, God of Victory"],
-    focused:   ["Winota, Joiner of Forces", "Razia, Boros Archangel", "Firesong and Sunspeaker"],
+    focused:   ["Winota, Joiner of Forces", "Firesong and Sunspeaker"],
     optimized: ["Feather, the Redeemed", "Zirda, the Dawnwaker"],
     cedh:      ["Winota, Joiner of Forces"],
   },
   WG: {
     casual:    ["Sythis, Harvest's Hand", "Karametra, God of Harvests", "Sigarda, Host of Herons"],
     focused:   ["Rhys the Redeemed", "Hamza, Guardian of Arashin", "Emmara, Soul of the Accord"],
-    optimized: ["Selvala, Explorer Returned", "Aura Shards"],
+    optimized: ["Selvala, Explorer Returned", "Lathiel, the Bounteous Dawn"],
     cedh:      ["Selvala, Explorer Returned"],
   },
   UB: {
@@ -183,18 +91,18 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   UR: {
     casual:    ["Niv-Mizzet, Parun", "Melek, Izzet Paragon", "Jori En, Ruin Diver"],
     focused:   ["Mizzix of the Izmagnus", "Keranos, God of Storms", "Saheeli, the Gifted"],
-    optimized: ["Izzet Guildmage", "Elsha of the Infinite"],
-    cedh:      ["Niv-Mizzet, Parun", "Thrasios, Triton Hero"],
+    optimized: ["Elsha of the Infinite", "Niv-Mizzet, Parun"],
+    cedh:      ["Niv-Mizzet, Parun"],
   },
   UG: {
     casual:    ["Aesi, Tyrant of Gyre Strait", "Tatyova, Benthic Druid", "Edric, Spymaster of Trest"],
     focused:   ["Kruphix, God of Horizons", "Rashmi, Eternities Crafter", "Momir Vig, Simic Visionary"],
     optimized: ["Kinnan, Bonder Prodigy", "Vorel of the Hull Clade"],
-    cedh:      ["Kinnan, Bonder Prodigy", "Thrasios, Triton Hero"],
+    cedh:      ["Kinnan, Bonder Prodigy"],
   },
   BR: {
     casual:    ["Prosper, Tome-Bound", "Grenzo, Dungeon Warden", "Olivia Voldaren"],
-    focused:   ["Daretti, Scrap Savant", "Mogis, God of Slaughter", "Judith, the Scourge Diva"],
+    focused:   ["Mogis, God of Slaughter", "Judith, the Scourge Diva"],
     optimized: ["Kroxa, Titan of Death's Hunger", "Ob Nixilis of the Black Oath"],
     cedh:      ["Prosper, Tome-Bound"],
   },
@@ -237,7 +145,7 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   },
   WBG: {
     casual:    ["Tayam, Luminous Enigma", "Teysa Karlov", "Ghave, Guru of Spores"],
-    focused:   ["Abzan Falconer", "Doran, the Siege Tower"],
+    focused:   ["Anafenza, the Foremost", "Doran, the Siege Tower"],
     optimized: ["Ghave, Guru of Spores", "Karador, Ghost Chieftain"],
     cedh:      ["Karador, Ghost Chieftain"],
   },
@@ -249,7 +157,7 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   },
   UBR: {
     casual:    ["Marchesa, the Black Rose", "Jeleva, Nephalia's Scourge", "Kess, Dissident Mage"],
-    focused:   ["Grixis Grimblade", "Yidris, Maelstrom Wielder"],
+    focused:   ["Sedris, the Traitor King", "Yidris, Maelstrom Wielder"],
     optimized: ["Kess, Dissident Mage", "Nekusar, the Mindrazer"],
     cedh:      ["Kess, Dissident Mage"],
   },
@@ -267,37 +175,42 @@ const COMMANDER_POOLS: Record<string, TieredPool> = {
   },
   BRG: {
     casual:    ["Korvold, Fae-Cursed King", "Prossh, Skyraider of Kher", "Sek'Kuar, Deathkeeper"],
-    focused:   ["Jund Charm", "Xira Arien"],
+    focused:   ["Kresh the Bloodbraided", "Xira Arien"],
     optimized: ["Korvold, Fae-Cursed King", "Prossh, Skyraider of Kher"],
     cedh:      ["Korvold, Fae-Cursed King"],
   },
   // ─ Four-color ─────────────────────────────────────────────────────────────
+  // WUBR (sans Green) — Breya is the canonical WUBR commander
   WUBR: {
-    casual:    ["Atraxa, Praetors' Voice", "Yidris, Maelstrom Wielder"],
-    focused:   ["Breya, Etherium Shaper", "Yidris, Maelstrom Wielder"],
+    casual:    ["Breya, Etherium Shaper"],
+    focused:   ["Breya, Etherium Shaper"],
     optimized: ["Breya, Etherium Shaper"],
     cedh:      ["Breya, Etherium Shaper"],
   },
+  // WUBG (sans Red) — Atraxa is W/U/B/G
   WUBG: {
-    casual:    ["Atraxa, Praetors' Voice", "Thrasios, Triton Hero"],
+    casual:    ["Atraxa, Praetors' Voice"],
     focused:   ["Atraxa, Praetors' Voice"],
     optimized: ["Atraxa, Praetors' Voice"],
-    cedh:      ["Thrasios, Triton Hero"],
+    cedh:      ["Atraxa, Praetors' Voice"],
   },
+  // WURG (sans Black) — Kynaios and Tiro of Meletis is the canonical WURG commander
   WURG: {
-    casual:    ["Atraxa, Praetors' Voice", "Yidris, Maelstrom Wielder"],
-    focused:   ["Atraxa, Praetors' Voice"],
-    optimized: ["Atraxa, Praetors' Voice"],
-    cedh:      ["Yidris, Maelstrom Wielder"],
+    casual:    ["Kynaios and Tiro of Meletis"],
+    focused:   ["Kynaios and Tiro of Meletis"],
+    optimized: ["Kynaios and Tiro of Meletis"],
+    cedh:      ["Kynaios and Tiro of Meletis"],
   },
+  // WBRG (sans Blue) — Saskia is W/B/R/G
   WBRG: {
-    casual:    ["Saskia the Unyielding", "Yidris, Maelstrom Wielder"],
+    casual:    ["Saskia the Unyielding"],
     focused:   ["Saskia the Unyielding"],
     optimized: ["Saskia the Unyielding"],
     cedh:      ["Saskia the Unyielding"],
   },
+  // UBRG (sans White) — Yidris is U/B/R/G
   UBRG: {
-    casual:    ["Yidris, Maelstrom Wielder", "The Ur-Dragon"],
+    casual:    ["Yidris, Maelstrom Wielder"],
     focused:   ["Yidris, Maelstrom Wielder"],
     optimized: ["Yidris, Maelstrom Wielder"],
     cedh:      ["Yidris, Maelstrom Wielder"],
@@ -321,6 +234,61 @@ const BASICS: Record<ManaColor, string> = {
 
 // Universal staples guaranteed in any generated deck
 const UNIVERSAL_STAPLES = ["Sol Ring", "Command Tower", "Arcane Signet"];
+
+// ── Fallback spell pools ──────────────────────────────────────────────────────
+// Used when EDHREC doesn't return enough non-land cards (e.g. network error,
+// rare commander, or strict budget filter). These are real, legal Commander cards
+// that are broadly useful regardless of strategy. They keep the deck from being
+// padded with dozens of basic lands.
+
+const UNIVERSAL_FALLBACK_SPELLS = [
+  // Ramp
+  "Wayfarer's Bauble", "Burnished Hart", "Mind Stone", "Thought Vessel",
+  "Commander's Sphere", "Solemn Simulacrum", "Chromatic Lantern",
+  // Utility non-basic lands (treated as spells here; they'll be EDHREC land picks normally)
+  "Exotic Orchard", "Reliquary Tower", "Myriad Landscape",
+  "Evolving Wilds", "Terramorphic Expanse",
+  // Card draw / filtering
+  "Lifecrafter's Bestiary", "Skullclamp", "Staff of Nin",
+  // Removal
+  "Chaos Warp", "Generous Gift",
+  // Protection
+  "Swiftfoot Boots", "Lightning Greaves",
+  // Recursion
+  "Eternal Witness", "Regrowth", "Reclaim",
+];
+
+const COLOR_FALLBACK_SPELLS: Record<ManaColor, string[]> = {
+  W: [
+    "Swords to Plowshares", "Path to Exile", "Wrath of God", "Day of Judgment",
+    "Return to Dust", "Austere Command", "Smothering Tithe",
+    "Sun Titan", "Teferi's Protection", "Cathars' Crusade",
+    "Mentor of the Meek", "Requiem Angel",
+  ],
+  U: [
+    "Counterspell", "Negate", "Swan Song", "Arcane Denial",
+    "Ponder", "Preordain", "Brainstorm", "Fact or Fiction",
+    "Rhystic Study", "Mystic Remora", "Cyclonic Rift",
+    "Reality Shift", "Imprisoned in the Moon", "Bident of Thassa",
+  ],
+  B: [
+    "Sign in Blood", "Night's Whisper", "Read the Bones",
+    "Reanimate", "Animate Dead", "Feed the Swarm",
+    "Shriekmaw", "Gray Merchant of Asphodel", "Phyrexian Arena",
+    "Bolas's Citadel", "Deadly Rollick", "Diabolic Intent",
+  ],
+  R: [
+    "Blasphemous Act", "Jeska's Will", "Deflecting Swat",
+    "Vandalblast", "Faithless Looting", "Dualcaster Mage",
+    "Dragon Tempest", "Terrorfire", "Mizzium Mortars",
+  ],
+  G: [
+    "Kodama's Reach", "Cultivate", "Rampant Growth", "Farseek",
+    "Nature's Lore", "Three Visits", "Llanowar Elves", "Elvish Mystic",
+    "Birds of Paradise", "Beast Within", "Heroic Intervention",
+    "Sylvan Library", "Selvala, Heart of the Wilds",
+  ],
+};
 
 function colorKey(colors: ManaColor[]): string {
   return [...colors].sort().join("") || "UBG";
@@ -419,8 +387,11 @@ export async function generateCommanderSample({
   // the power-level-appropriate pool for the chosen colors.
   const commander = commanderName?.trim() || resolveCommander(key, powerLevel);
 
-  const lands = landTarget(powerLevel);
-  const spellTarget = 99 - lands; // non-commander, non-land spell slots
+  const targetLands = landTarget(powerLevel);   // e.g. 36 for focused
+  const targetNonLandSpells = 99 - targetLands; // e.g. 63 for focused
+  // We reserve ~10 slots for utility lands (non-basics from EDHREC) and fill the
+  // rest with basics. This matches the structure of real Commander decklists.
+  const targetUtilityLands = Math.min(10, Math.floor(targetLands * 0.28));
 
   // Fetch EDHREC recommendations
   let edhrecCards: EdhrecCard[] = [];
@@ -442,56 +413,82 @@ export async function generateCommanderSample({
     // network error — fall through to fallback
   }
 
-  let spellLines: string[];
+  const commanderLower = commander.toLowerCase();
+  const BASIC_NAMES = new Set(["plains", "island", "swamp", "mountain", "forest"]);
 
-  if (source === "edhrec" && edhrecCards.length > 0) {
-    const budgetFiltered = applyBudgetFilter(edhrecCards, budget);
-    const ranked = rankCards(budgetFiltered);
+  // ── Separate EDHREC recommendations into land cards and non-land spells ──
+  const budgetFiltered = applyBudgetFilter(edhrecCards, budget);
+  const ranked = rankCards(budgetFiltered);
 
-    // Exclude basic lands and the commander itself from the spell pool
-    const commanderLower = commander.toLowerCase();
-    const BASIC_NAMES = new Set(["plains", "island", "swamp", "mountain", "forest"]);
-    const nonLandSpells = ranked.filter(
-      (c) =>
-        !BASIC_NAMES.has(c.name.toLowerCase()) &&
-        c.name.toLowerCase() !== commanderLower
-    );
+  const edhrecLands = ranked.filter(
+    (c) => c.is_land && !BASIC_NAMES.has(c.name.toLowerCase())
+  );
+  const edhrecSpells = ranked.filter(
+    (c) =>
+      !c.is_land &&
+      !BASIC_NAMES.has(c.name.toLowerCase()) &&
+      c.name.toLowerCase() !== commanderLower
+  );
 
-    // Always include universal staples that fit the budget, then fill with EDHREC picks
-    const cap = BUDGET_PRICE_CAPS[budget];
-    const universalAllowed = UNIVERSAL_STAPLES.filter(
-      (s) => s.toLowerCase() !== commanderLower
-    ).filter((s) => {
-      if (cap === null) return true;
-      const match = edhrecCards.find((c) => c.name.toLowerCase() === s.toLowerCase());
-      if (!match) return true; // no EDHREC price data → include staples anyway
-      return match.price === null || match.price <= cap;
-    });
+  // ── Build the non-land spell list ────────────────────────────────────────
+  const cap = BUDGET_PRICE_CAPS[budget];
+  const universalAllowed = UNIVERSAL_STAPLES.filter(
+    (s) => s.toLowerCase() !== commanderLower
+  ).filter((s) => {
+    if (cap === null) return true;
+    const match = edhrecCards.find((c) => c.name.toLowerCase() === s.toLowerCase());
+    if (!match) return true; // no EDHREC price data → include anyway
+    return match.price === null || match.price <= cap;
+  });
 
-    const picked = new Set(universalAllowed.map((s) => s.toLowerCase()));
-    const spellNames: string[] = [...universalAllowed];
+  const picked = new Set(universalAllowed.map((s) => s.toLowerCase()));
+  const spellNames: string[] = [...universalAllowed];
 
-    for (const card of nonLandSpells) {
-      if (spellNames.length >= spellTarget) break;
-      if (picked.has(card.name.toLowerCase())) continue;
-      picked.add(card.name.toLowerCase());
-      spellNames.push(card.name);
-    }
-
-    spellLines = spellNames.map((n) => `1 ${n}`);
-  } else {
-    // Fallback: at least include universal staples so something loads
-    spellLines = UNIVERSAL_STAPLES
-      .filter((s) => s.toLowerCase() !== commander.toLowerCase())
-      .map((n) => `1 ${n}`);
+  for (const card of edhrecSpells) {
+    if (spellNames.length >= targetNonLandSpells) break;
+    if (picked.has(card.name.toLowerCase())) continue;
+    picked.add(card.name.toLowerCase());
+    spellNames.push(card.name);
   }
 
-  const landLines = buildLandLines(pickedColors, lands);
+  // If EDHREC didn't provide enough non-land spells, pad with curated fallback
+  // staples so the deck is playable — not flooded with basics.
+  if (spellNames.length < targetNonLandSpells) {
+    const fallbackPool = [
+      ...UNIVERSAL_FALLBACK_SPELLS,
+      ...pickedColors.flatMap((c) => COLOR_FALLBACK_SPELLS[c] ?? []),
+    ];
+    for (const card of fallbackPool) {
+      if (spellNames.length >= targetNonLandSpells) break;
+      const lower = card.toLowerCase();
+      if (lower === commanderLower || picked.has(lower)) continue;
+      picked.add(lower);
+      spellNames.push(card);
+    }
+  }
+
+  const spellLines = spellNames.map((n) => `1 ${n}`);
+
+  // ── Build the land list (utility + basics) ───────────────────────────────
+  const utilityLandNames: string[] = [];
+  const pickedLands = new Set<string>();
+  for (const card of edhrecLands) {
+    if (utilityLandNames.length >= targetUtilityLands) break;
+    if (pickedLands.has(card.name.toLowerCase())) continue;
+    pickedLands.add(card.name.toLowerCase());
+    utilityLandNames.push(card.name);
+  }
+
+  // Compute how many basics are needed so total equals exactly 100
+  const basicCount = 99 - spellLines.length - utilityLandNames.length;
+  const basicLandLines = buildLandLines(pickedColors, Math.max(0, basicCount));
+  const utilityLandLines = utilityLandNames.map((n) => `1 ${n}`);
 
   const decklist = [
     `1 ${commander}`,
     ...spellLines,
-    ...landLines,
+    ...utilityLandLines,
+    ...basicLandLines,
   ].join("\n");
 
   return {
@@ -505,4 +502,29 @@ export async function generateCommanderSample({
     source,
     totalEdhrecCards: edhrecCards.length,
   };
+}
+
+/**
+ * Picks a random popular commander from the built-in pools and builds a full
+ * 100-card deck using live EDHREC recommendations. Call this for the "explore
+ * a random deck" button so users always get fresh variety without hardcoded lists.
+ */
+export async function generateRandomSampleDeck(): Promise<GeneratedSample> {
+  const allKeys = Object.keys(COMMANDER_POOLS);
+  const key = allKeys[Math.floor(Math.random() * allKeys.length)]!;
+  const pool = COMMANDER_POOLS[key]!;
+
+  // Weight toward focused/optimized — more interesting card selections
+  const powerLevelOptions: PowerLevel[] = ["casual", "focused", "focused", "optimized"];
+  const powerLevel = powerLevelOptions[Math.floor(Math.random() * powerLevelOptions.length)]!;
+  const commander = pickFromPool(pool, powerLevel);
+
+  // Derive color array from the pool key (e.g. "UBG" → ["U","B","G"])
+  const ALL_COLORS = new Set<string>(["W", "U", "B", "R", "G"]);
+  const colors = key.split("").filter((c) => ALL_COLORS.has(c)) as ManaColor[];
+
+  // Use "upgraded" as a sensible default budget — covers most popular staples
+  const budget: BudgetTier = "upgraded";
+
+  return generateCommanderSample({ colors, commanderName: commander, budget, powerLevel });
 }

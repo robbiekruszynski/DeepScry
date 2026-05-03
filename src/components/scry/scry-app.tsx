@@ -19,7 +19,7 @@ import type { CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
 import { importDecklist } from "@/lib/deck-import";
 import {
   generateCommanderSample,
-  WISE_MOTHMAN_SAMPLE,
+  generateRandomSampleDeck,
   type BudgetTier,
   type ManaColor,
   type PowerLevel,
@@ -171,11 +171,19 @@ export function ScryApp() {
   }, []);
 
   async function loadSampleDeck() {
-    await importSample({
-      decklist: WISE_MOTHMAN_SAMPLE.decklist,
-      commanderName: WISE_MOTHMAN_SAMPLE.commanderName,
-      archetype: WISE_MOTHMAN_SAMPLE.archetype,
-    });
+    setIsSampleImporting(true);
+    setSampleError(null);
+    try {
+      const sample = await generateRandomSampleDeck();
+      await importSample(
+        { decklist: sample.decklist, commanderName: sample.commanderName, archetype: sample.archetype },
+        true
+      );
+    } catch (err) {
+      setSampleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSampleImporting(false);
+    }
   }
 
   async function loadGeneratedSample() {
@@ -323,10 +331,10 @@ export function ScryApp() {
                         {isSampleImporting ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                            Loading sample...
+                            Fetching from EDHREC…
                           </>
                         ) : (
-                          "Load sample deck"
+                          "Explore a random deck"
                         )}
                       </Button>
                       <Button
@@ -337,15 +345,19 @@ export function ScryApp() {
                         Import your own
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Picks a random popular commander and builds a 100-card deck live from EDHREC
+                      recommendations — different every click.
+                    </p>
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <div className="font-medium text-foreground">
                         Build a sample from your preferences
                       </div>
                       <p className="mt-1 text-xs">
-                        Pick colors and a budget/power target to get a randomly selected
-                        commander matched to that power level, or type a specific commander name.
-                        Cards come from EDHREC filtered to your per-card price cap — re-roll as
-                        many times as you like to explore different commanders.
+                        Pick colors and a budget/power target to get a randomly selected commander
+                        matched to that power level, or type a specific commander name. Cards come
+                        live from EDHREC filtered to your per-card price cap and padded with basics
+                        to guarantee a legal 100-card deck — re-roll as many times as you like.
                       </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className="space-y-2">
