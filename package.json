@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "node -e \"const{execSync}=require('child_process');for(const p of[3000,3001,3002,3003])try{execSync('lsof -ti tcp:'+p+' | xargs kill -9',{stdio:'ignore'});}catch{}\" && rm -rf .next && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

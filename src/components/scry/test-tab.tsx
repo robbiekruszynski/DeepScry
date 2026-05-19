@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
+const LIBRARY_BACK_URL = "https://cards.scryfall.io/back.jpg";
 const IMAGE_FETCH_DELAY_MS = 90;
 const imageUrlCache = new Map<string, string>();
 let imageFetchQueue = Promise.resolve();
@@ -120,6 +121,7 @@ function BattlefieldCardView({
   fc,
   imageUrl,
   isHovered,
+  isBeingDragged,
   onPointerDown,
   onClick,
   onContextMenu,
@@ -128,6 +130,7 @@ function BattlefieldCardView({
   fc: BattlefieldCard;
   imageUrl: (card: ScryfallCard | null) => string;
   isHovered: boolean;
+  isBeingDragged?: boolean;
   onPointerDown: (e: React.PointerEvent, uid: string) => void;
   onClick: (e: React.MouseEvent, uid: string) => void;
   onContextMenu: (e: React.MouseEvent, uid: string) => void;
@@ -145,7 +148,8 @@ function BattlefieldCardView({
         top: fc.y,
         width: tapped ? BF_CARD_H : BF_CARD_W,
         height: tapped ? BF_CARD_W : BF_CARD_H,
-        zIndex: 10,
+        zIndex: isBeingDragged ? 20 : 10,
+        opacity: isBeingDragged ? 0.35 : 1,
       }}
       onPointerDown={(e) => onPointerDown(e, fc.uid)}
       onClick={(e) => onClick(e, fc.uid)}
@@ -155,13 +159,17 @@ function BattlefieldCardView({
       onFocus={() => onHover(fc.card)}
     >
       <div
-        className={`relative h-full w-full overflow-hidden rounded-md border bg-card shadow-lg ${
+        className={`absolute overflow-hidden rounded-md border bg-card shadow-lg ${
           isHovered ? "border-primary ring-2 ring-primary/50" : "border-border/60"
         }`}
         style={{
+          width: BF_CARD_W,
+          height: BF_CARD_H,
+          left: tapped ? (BF_CARD_H - BF_CARD_W) / 2 : 0,
+          top: tapped ? (BF_CARD_W - BF_CARD_H) / 2 : 0,
           transform: tapped ? "rotate(90deg)" : "none",
           transformOrigin: "center center",
-          transition: "transform 0.2s ease",
+          transition: "transform 0.2s ease, left 0.2s ease, top 0.2s ease",
         }}
       >
         <img
@@ -173,7 +181,7 @@ function BattlefieldCardView({
             e.currentTarget.src = CARD_BACK_URL;
           }}
         />
-        {showPt ? (
+        {showPt && !tapped ? (
           <span className="absolute bottom-0.5 right-0.5 rounded bg-black/75 px-1 py-px text-[10px] font-bold leading-none text-white">
             {stats.power ?? "?"}/{stats.toughness ?? "?"}
           </span>
@@ -215,13 +223,24 @@ export function TestTab({
   const nextUid = () => `fc-${++uidCounter.current}`;
 
   const battlefieldRef = React.useRef<HTMLDivElement>(null);
-  const dragRef = React.useRef<{
-    uid: string;
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
+  const handZoneRef = React.useRef<HTMLDivElement>(null);
+  const dragRef = React.useRef<
+    | {
+        source: "battlefield";
+        uid: string;
+        startX: number;
+        startY: number;
+        origX: number;
+        origY: number;
+      }
+    | {
+        source: "hand";
+        uid: string;
+        startX: number;
+        startY: number;
+      }
+    | null
+  >(null);
   const dragMovedRef = React.useRef(false);
 
   const [library, setLibrary] = React.useState<ScryfallCard[]>([]);
@@ -241,6 +260,14 @@ export function TestTab({
   const [drawCount, setDrawCount] = React.useState("1");
   const [hoveredCard, setHoveredCard] = React.useState<ScryfallCard | null>(null);
   const [handExpanded, setHandExpanded] = React.useState(true);
+  const [handDragGhost, setHandDragGhost] = React.useState<{
+    uid: string;
+    card: ScryfallCard;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [handDragOverBattlefield, setHandDragOverBattlefield] = React.useState(false);
+  const [handDragOverHand, setHandDragOverHand] = React.useState(false);
 
   const dealOpeningHand = React.useCallback(
     (size: number) => {
@@ -412,18 +439,42 @@ export function TestTab({
     drawCard();
   }, [drawCard]);
 
-  const playHandCardToBattlefield = React.useCallback((uid: string) => {
-    setHand((h) => {
-      const idx = h.findIndex((c) => c.uid === uid);
-      if (idx < 0) return h;
-      const fc = h[idx]!;
-      setBattlefield((bf) => {
-        const pos = nextBattlefieldPosition(bf.length);
-        return [...bf, { ...fc, x: pos.x, y: pos.y, tapped: false }];
+  const playHandCardToBattlefieldAt = React.useCallback(
+    (uid: string, x: number, y: number) => {
+      let played: FieldCard | null = null;
+      setHand((h) => {
+        const idx = h.findIndex((c) => c.uid === uid);
+        if (idx < 0) return h;
+        played = h[idx]!;
+        return [...h.slice(0, idx), ...h.slice(idx + 1)];
       });
-      return [...h.slice(0, idx), ...h.slice(idx + 1)];
-    });
-  }, []);
+      if (!played) return;
+      setBattlefield((bf) => {
+        if (bf.some((c) => c.uid === uid)) return bf;
+        return [...bf, { ...played!, x, y, tapped: false }];
+      });
+    },
+    []
+  );
+
+  const playHandCardToBattlefield = React.useCallback(
+    (uid: string) => {
+      let played: FieldCard | null = null;
+      setHand((h) => {
+        const idx = h.findIndex((c) => c.uid === uid);
+        if (idx < 0) return h;
+        played = h[idx]!;
+        return [...h.slice(0, idx), ...h.slice(idx + 1)];
+      });
+      if (!played) return;
+      setBattlefield((bf) => {
+        if (bf.some((c) => c.uid === uid)) return bf;
+        const pos = nextBattlefieldPosition(bf.length);
+        return [...bf, { ...played!, x: pos.x, y: pos.y, tapped: false }];
+      });
+    },
+    []
+  );
 
   const moveHandToGraveyard = React.useCallback((uid: string) => {
     setHand((h) => {
@@ -446,12 +497,15 @@ export function TestTab({
   }, []);
 
   const moveBattlefieldToHand = React.useCallback((uid: string) => {
+    let returning: FieldCard | null = null;
     setBattlefield((bf) => {
       const fc = bf.find((c) => c.uid === uid);
       if (!fc) return bf;
-      setHand((h) => [...h, { card: fc.card, uid: nextUid() }]);
+      returning = { card: fc.card, uid: fc.uid };
       return bf.filter((c) => c.uid !== uid);
     });
+    if (!returning) return;
+    setHand((h) => (h.some((c) => c.uid === uid) ? h : [...h, returning!]));
   }, []);
 
   const moveBattlefieldToGraveyard = React.useCallback((uid: string) => {
@@ -473,10 +527,60 @@ export function TestTab({
   }, []);
 
   const toggleTap = React.useCallback((uid: string) => {
+    const offset = (BF_CARD_H - BF_CARD_W) / 2;
     setBattlefield((bf) =>
-      bf.map((c) => (c.uid === uid ? { ...c, tapped: !c.tapped } : c))
+      bf.map((c) => {
+        if (c.uid !== uid) return c;
+        const nextTapped = !c.tapped;
+        return nextTapped
+          ? { ...c, tapped: true, x: c.x - offset, y: c.y + offset }
+          : { ...c, tapped: false, x: c.x + offset, y: c.y - offset };
+      })
     );
   }, []);
+
+  const untapAll = React.useCallback(() => {
+    const offset = (BF_CARD_H - BF_CARD_W) / 2;
+    setBattlefield((bf) =>
+      bf.map((c) =>
+        c.tapped
+          ? { ...c, tapped: false, x: c.x + offset, y: c.y - offset }
+          : c
+      )
+    );
+  }, []);
+
+  const isPointOverHand = (clientX: number, clientY: number) => {
+    const rect = handZoneRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  };
+
+  const isPointOverBattlefield = (clientX: number, clientY: number) => {
+    const rect = battlefieldRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  };
+
+  const clientToBattlefieldPosition = (clientX: number, clientY: number) => {
+    const rect = battlefieldRef.current!.getBoundingClientRect();
+    const maxX = Math.max(0, rect.width - BF_CARD_W);
+    const maxY = Math.max(0, rect.height - BF_CARD_H);
+    return {
+      x: Math.min(maxX, Math.max(0, clientX - rect.left - BF_CARD_W / 2)),
+      y: Math.min(maxY, Math.max(0, clientY - rect.top - BF_CARD_H / 2)),
+    };
+  };
 
   const handleBattlefieldPointerDown = (e: React.PointerEvent, uid: string) => {
     if (e.button !== 0) return;
@@ -486,6 +590,7 @@ export function TestTab({
     if (!fc || !battlefieldRef.current) return;
     dragMovedRef.current = false;
     dragRef.current = {
+      source: "battlefield",
       uid,
       startX: e.clientX,
       startY: e.clientY,
@@ -495,12 +600,63 @@ export function TestTab({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleBattlefieldPointerMove = (e: React.PointerEvent) => {
+  const handleHandPointerDown = (e: React.PointerEvent, fc: FieldCard) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragMovedRef.current = false;
+    dragRef.current = {
+      source: "hand",
+      uid: fc.uid,
+      startX: e.clientX,
+      startY: e.clientY,
+    };
+    setHandDragGhost({ uid: fc.uid, card: fc.card, x: e.clientX, y: e.clientY });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleGlobalPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
-    if (!drag || !battlefieldRef.current) return;
+    if (!drag) return;
+
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (Math.hypot(dx, dy) > 4) dragMovedRef.current = true;
+
+    if (drag.source === "hand") {
+      const handCard = hand.find((c) => c.uid === drag.uid);
+      if (!handCard) return;
+      setHandDragGhost({
+        uid: drag.uid,
+        card: handCard.card,
+        x: e.clientX,
+        y: e.clientY,
+      });
+      setHandDragOverBattlefield(isPointOverBattlefield(e.clientX, e.clientY));
+      setHandDragOverHand(false);
+      return;
+    }
+
+    const bfCard = battlefield.find((c) => c.uid === drag.uid);
+    if (!bfCard) return;
+
+    const overHand = isPointOverHand(e.clientX, e.clientY);
+    const overBattlefield = isPointOverBattlefield(e.clientX, e.clientY);
+    setHandDragOverHand(overHand);
+    setHandDragOverBattlefield(overBattlefield);
+
+    if (dragMovedRef.current) {
+      setHandDragGhost({
+        uid: drag.uid,
+        card: bfCard.card,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    }
+
+    if (overHand) return;
+
+    if (!battlefieldRef.current) return;
     const rect = battlefieldRef.current.getBoundingClientRect();
     const maxX = Math.max(0, rect.width - BF_CARD_W);
     const maxY = Math.max(0, rect.height - BF_CARD_H);
@@ -511,8 +667,27 @@ export function TestTab({
     );
   };
 
-  const handleBattlefieldPointerUp = () => {
+  const handleGlobalPointerUp = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
     dragRef.current = null;
+
+    if (drag.source === "hand" && dragMovedRef.current && battlefieldRef.current) {
+      if (isPointOverBattlefield(e.clientX, e.clientY)) {
+        const { x, y } = clientToBattlefieldPosition(e.clientX, e.clientY);
+        playHandCardToBattlefieldAt(drag.uid, x, y);
+      }
+    }
+
+    if (drag.source === "battlefield" && dragMovedRef.current) {
+      if (isPointOverHand(e.clientX, e.clientY)) {
+        moveBattlefieldToHand(drag.uid);
+      }
+    }
+
+    setHandDragGhost(null);
+    setHandDragOverBattlefield(false);
+    setHandDragOverHand(false);
     window.setTimeout(() => {
       dragMovedRef.current = false;
     }, 0);
@@ -565,7 +740,12 @@ export function TestTab({
       className="flex overflow-hidden rounded-lg border border-border bg-background text-foreground"
       style={{ height: "calc(100vh - 11rem)", minHeight: 520 }}
     >
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className="flex min-w-0 flex-1 flex-col"
+        onPointerMove={handleGlobalPointerMove}
+        onPointerUp={handleGlobalPointerUp}
+        onPointerCancel={handleGlobalPointerUp}
+      >
         {/* ── Top bar ── */}
         <div
           className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3"
@@ -591,26 +771,37 @@ export function TestTab({
             </button>
           </div>
           <span className="text-sm font-semibold text-muted-foreground">Turn {turn}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={restartGame}
-            disabled={showEmpty}
-          >
-            Restart
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={untapAll}
+              disabled={showEmpty || !battlefield.some((c) => c.tapped)}
+            >
+              Untap All
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={restartGame}
+              disabled={showEmpty}
+            >
+              Restart
+            </Button>
+          </div>
         </div>
 
 
         {/* ── Battlefield (field test) ── */}
         <div
           ref={battlefieldRef}
-          className="relative min-h-0 flex-1 overflow-hidden bg-muted/20"
-          onPointerMove={handleBattlefieldPointerMove}
-          onPointerUp={handleBattlefieldPointerUp}
-          onPointerLeave={handleBattlefieldPointerUp}
+          className={`relative min-h-0 flex-1 overflow-hidden bg-muted/20 transition-shadow ${
+            handDragOverBattlefield ? "ring-2 ring-inset ring-primary/50" : ""
+          }`}
         >
           <div className="pointer-events-none absolute left-3 top-2 z-20 flex items-center gap-1 text-xs font-medium text-muted-foreground">
             Battlefield
@@ -623,6 +814,7 @@ export function TestTab({
               fc={fc}
               imageUrl={imageUrl}
               isHovered={hoveredCard === fc.card}
+              isBeingDragged={handDragGhost?.uid === fc.uid}
               onPointerDown={handleBattlefieldPointerDown}
               onClick={(e, uid) => {
                 if (dragMovedRef.current) return;
@@ -640,7 +832,12 @@ export function TestTab({
           className="flex shrink-0 border-t border-border bg-muted/40"
           style={{ height: BOTTOM_BAR_H }}
         >
-          <div className="flex min-w-0 flex-1 flex-col border-r border-border px-3 py-2">
+          <div
+            ref={handZoneRef}
+            className={`flex min-w-0 flex-1 flex-col border-r border-border px-3 py-2 transition-shadow ${
+              handDragOverHand ? "ring-2 ring-inset ring-primary/50" : ""
+            }`}
+          >
             <button
               type="button"
               className="mb-2 flex items-center gap-1 text-left text-xs font-semibold text-muted-foreground"
@@ -666,30 +863,35 @@ export function TestTab({
                 ) : (
                   hand.map((fc) => {
                     const isHovered = hoveredCard === fc.card;
+                    const isDragging = handDragGhost?.uid === fc.uid;
                     return (
-                      <button
+                      <div
                         key={fc.uid}
-                        type="button"
-                        className={`min-w-0 overflow-hidden rounded-md border bg-card shadow-md transition hover:ring-2 hover:ring-primary/40 sm:rounded-lg ${
+                        role="button"
+                        tabIndex={0}
+                        className={`min-w-0 touch-none select-none overflow-hidden rounded-md border bg-card shadow-md transition hover:ring-2 hover:ring-primary/40 sm:rounded-lg ${
                           isHovered ? "border-primary ring-2 ring-primary/50" : "border-border"
-                        }`}
+                        } ${isDragging ? "opacity-40" : "cursor-grab active:cursor-grabbing"}`}
                         style={{ aspectRatio: HAND_CARD_ASPECT, maxHeight: 132 }}
-                        onClick={() => playHandCardToBattlefield(fc.uid)}
+                        onPointerDown={(e) => handleHandPointerDown(e, fc)}
+                        onClick={() => {
+                          if (dragMovedRef.current) return;
+                          playHandCardToBattlefield(fc.uid);
+                        }}
                         onContextMenu={(e) => openContextMenu(e, "hand", fc.uid)}
                         onMouseEnter={() => setHoveredCard(fc.card)}
                         onFocus={() => setHoveredCard(fc.card)}
-                        disabled={showEmpty}
                       >
                         <img
                           src={imageUrl(fc.card)}
                           alt={fc.card.name}
-                          className="h-full w-full object-cover"
+                          className="pointer-events-none h-full w-full object-cover"
                           draggable={false}
                           onError={(e) => {
                             e.currentTarget.src = CARD_BACK_URL;
                           }}
                         />
-                      </button>
+                      </div>
                     );
                   })
                 )}
@@ -701,8 +903,9 @@ export function TestTab({
             <ZoneTracker
               label="Library"
               count={library.length}
-              imageSrc={CARD_BACK_URL}
+              imageSrc={LIBRARY_BACK_URL}
               alt="Library"
+              faceDown
             />
             <ZoneTracker
               label="Graveyard"
@@ -809,13 +1012,16 @@ export function TestTab({
                     key={`${card.id}-${index}`}
                     type="button"
                     className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted"
-                    onMouseEnter={() => setHoveredCard(card)}
+                    onMouseEnter={() => {
+                      setLibraryPreviewIndex(index);
+                      setHoveredCard(card);
+                    }}
                     onClick={() => drawLibraryIndexToHand(index)}
                   >
                     <img
-                      src={imageUrl(card)}
+                      src={LIBRARY_BACK_URL}
                       alt=""
-                      className="h-8 w-6 shrink-0 rounded object-cover"
+                      className="h-8 w-6 shrink-0 rounded object-contain bg-[#0a1628]"
                       draggable={false}
                     />
                     <span className="truncate">{card.name}</span>
@@ -972,9 +1178,9 @@ export function TestTab({
                             }}
                           >
                             <img
-                              src={imageUrl(card)}
-                              alt={card.name}
-                              className="h-12 w-9 shrink-0 rounded object-cover"
+                              src={LIBRARY_BACK_URL}
+                              alt=""
+                              className="h-12 w-9 shrink-0 rounded object-contain bg-[#0a1628]"
                               draggable={false}
                               onError={(e) => {
                                 e.currentTarget.src = CARD_BACK_URL;
@@ -999,9 +1205,9 @@ export function TestTab({
                 {libraryPreviewCard && libraryPreviewIndex !== null ? (
                   <>
                     <img
-                      src={previewImageUrl(libraryPreviewCard)}
-                      alt={libraryPreviewCard.name}
-                      className="mx-auto w-full max-w-[180px] rounded-md border object-contain shadow-md"
+                      src={LIBRARY_BACK_URL}
+                      alt="Card back"
+                      className="mx-auto w-full max-w-[180px] rounded-md border object-contain bg-[#0a1628] shadow-md"
                       style={{ aspectRatio: HAND_CARD_ASPECT }}
                       draggable={false}
                       onError={(e) => {
@@ -1048,6 +1254,26 @@ export function TestTab({
           </div>
         </div>
       ) : null}
+
+      {handDragGhost ? (
+        <div
+          className="pointer-events-none fixed z-[200] overflow-hidden rounded-md border-2 border-primary bg-card shadow-2xl"
+          style={{
+            left: handDragGhost.x - BF_CARD_W / 2,
+            top: handDragGhost.y - BF_CARD_H / 2,
+            width: BF_CARD_W,
+            height: BF_CARD_H,
+            opacity: 0.92,
+          }}
+        >
+          <img
+            src={imageUrl(handDragGhost.card)}
+            alt={handDragGhost.card.name}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1057,11 +1283,13 @@ function ZoneTracker({
   count,
   imageSrc,
   alt,
+  faceDown = false,
 }: {
   label: string;
   count: number;
   imageSrc: string | null;
   alt: string;
+  faceDown?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
@@ -1073,7 +1301,12 @@ function ZoneTracker({
         style={{ width: 48, height: 67 }}
       >
         {imageSrc ? (
-          <img src={imageSrc} alt={alt} className="h-full w-full object-cover" draggable={false} />
+          <img
+            src={imageSrc}
+            alt={alt}
+            className={`h-full w-full ${faceDown ? "object-contain bg-[#0a1628]" : "object-cover"}`}
+            draggable={false}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[9px] text-muted-foreground/50">
             —
