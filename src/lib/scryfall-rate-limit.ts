@@ -1,12 +1,9 @@
 export const MIN_MS_BETWEEN_SCRYFALL_REQUESTS = 120;
 
-const SCRYFALL_UA =
-  "DeepScry/0.1 (https://github.com/robbiekruszynski/Scry; deck analyzer)";
-
 export function scryfallFetchHeaders(): HeadersInit {
   return {
-    Accept: "application/json",
-    "User-Agent": SCRYFALL_UA,
+    "User-Agent": "DeepScry/1.0 (mtg-deck-analysis-tool)",
+    "Accept": "application/json",
   };
 }
 

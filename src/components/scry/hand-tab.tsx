@@ -1,26 +1,51 @@
 "use client";
 
 import * as React from "react";
+import { ChevronDown } from "lucide-react";
 
 import type { CardTagMap, Deck } from "@/lib/deck";
 import { expandDeck } from "@/lib/deck";
 import { mulliganAdvice } from "@/lib/commander-tools";
 import { isLand } from "@/lib/stats";
 import type { ScryfallCard } from "@/lib/scryfall";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
 const IMAGE_FETCH_DELAY_MS = 90;
 const imageUrlCache = new Map<string, string>();
 let imageFetchQueue = Promise.resolve();
 
-// Natural card dimensions (portrait). Used to compute the tapped-rotation geometry.
-const CARD_W = 80;  // px wide untapped
-const CARD_H = 112; // px tall untapped  (ratio ≈ 5:7)
+const BF_CARD_W = 72;
+const BF_CARD_H = 100;
+const HAND_CARD_W = 100;
+const HAND_CARD_H = 140;
+const TOP_BAR_H = 40;
+const BOTTOM_BAR_H = 160;
+const SIDEBAR_W = 120;
+const DEFAULT_BF_X = 20;
+const DEFAULT_BF_Y = 24;
 
 type FieldCard = { card: ScryfallCard; uid: string };
+
+type BattlefieldCard = FieldCard & {
+  x: number;
+  y: number;
+  tapped: boolean;
+};
+
+type CardWithStats = ScryfallCard & {
+  power?: string | null;
+  toughness?: string | null;
+};
+
+type ContextMenuState =
+  | {
+      x: number;
+      y: number;
+      zone: "hand" | "battlefield";
+      uid: string;
+    }
+  | null;
 
 function shuffle<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -40,6 +65,10 @@ function verdictForHand(cards: ScryfallCard[]) {
 
 function isPermanent(card: ScryfallCard) {
   return /\b(Artifact|Battle|Creature|Enchantment|Land|Planeswalker)\b/i.test(card.type_line);
+}
+
+function isCreature(card: ScryfallCard) {
+  return /\bCreature\b/i.test(card.type_line);
 }
 
 function normalizeImageKey(name: string) {
@@ -70,7 +99,8 @@ async function fetchCardImageUrl(cardName: string): Promise<string> {
       const json = await res.json();
       const faceImage =
         Array.isArray(json.card_faces) && json.card_faces.length > 0
-          ? json.card_faces.find((f: any) => f?.image_uris?.normal)?.image_uris?.normal
+          ? json.card_faces.find((f: { image_uris?: { normal?: string } }) => f?.image_uris?.normal)
+              ?.image_uris?.normal
           : undefined;
       const url = json?.image_uris?.normal ?? faceImage ?? CARD_BACK_URL;
       imageUrlCache.set(key, String(url));
@@ -85,58 +115,69 @@ async function fetchCardImageUrl(cardName: string): Promise<string> {
   return task;
 }
 
-/**
- * Renders a card image that physically rotates 90° when tapped, matching real MTG
- * table feel. The container changes dimensions (portrait ↔ landscape) so surrounding
- * layout reflows naturally.
- */
-function CardImage({
+function nextBattlefieldPosition(index: number) {
+  const col = index % 10;
+  const row = Math.floor(index / 10);
+  return {
+    x: DEFAULT_BF_X + col * (BF_CARD_W + 8),
+    y: DEFAULT_BF_Y + row * (BF_CARD_H + 8),
+  };
+}
+
+function BattlefieldCardView({
+  fc,
   imageUrl,
-  alt,
-  tapped = false,
-  className = "",
-  onMouseEnter,
-  onError,
+  onPointerDown,
+  onClick,
+  onContextMenu,
 }: {
-  imageUrl: string;
-  alt: string;
-  tapped?: boolean;
-  className?: string;
-  onMouseEnter?: () => void;
-  onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+  fc: BattlefieldCard;
+  imageUrl: (card: ScryfallCard | null) => string;
+  onPointerDown: (e: React.PointerEvent, uid: string) => void;
+  onClick: (e: React.MouseEvent, uid: string) => void;
+  onContextMenu: (e: React.MouseEvent, uid: string) => void;
 }) {
-  // When tapped the container flips to landscape so the rotated portrait card fills it exactly.
-  const containerW = tapped ? CARD_H : CARD_W;
-  const containerH = tapped ? CARD_W : CARD_H;
-  // Offset keeps the image center aligned with the container center during rotation.
-  const imgLeft = tapped ? (CARD_H - CARD_W) / 2 : 0;
-  const imgTop  = tapped ? (CARD_W - CARD_H) / 2 : 0;
+  const { card, tapped } = fc;
+  const stats = card as CardWithStats;
+  const showPt = isCreature(card) && (stats.power != null || stats.toughness != null);
 
   return (
     <div
-      className={className}
-      style={{ width: containerW, height: containerH, position: "relative", flexShrink: 0 }}
-      onMouseEnter={onMouseEnter}
+      className="absolute touch-none select-none"
+      style={{
+        left: fc.x,
+        top: fc.y,
+        width: tapped ? BF_CARD_H : BF_CARD_W,
+        height: tapped ? BF_CARD_W : BF_CARD_H,
+        zIndex: 10,
+      }}
+      onPointerDown={(e) => onPointerDown(e, fc.uid)}
+      onClick={(e) => onClick(e, fc.uid)}
+      onContextMenu={(e) => onContextMenu(e, fc.uid)}
     >
-      <img
-        src={imageUrl}
-        alt={alt}
+      <div
+        className="relative h-full w-full overflow-hidden rounded-md border border-border/60 bg-card shadow-lg"
         style={{
-          position: "absolute",
-          width: CARD_W,
-          height: CARD_H,
-          left: imgLeft,
-          top: imgTop,
           transform: tapped ? "rotate(90deg)" : "none",
           transformOrigin: "center center",
-          transition: "transform 0.22s ease, left 0.22s ease, top 0.22s ease",
-          borderRadius: 6,
-          objectFit: "cover",
+          transition: "transform 0.2s ease",
         }}
-        loading="eager"
-        draggable={false}
-        onError={onError ?? ((e) => { e.currentTarget.src = CARD_BACK_URL; })}
-      />
+      >
+        <img
+          src={imageUrl(card)}
+          alt={card.name}
+          className="h-full w-full object-cover"
+          draggable={false}
+          onError={(e) => {
+            e.currentTarget.src = CARD_BACK_URL;
+          }}
+        />
+        {showPt ? (
+          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/75 px-1 py-px text-[10px] font-bold leading-none text-white">
+            {stats.power ?? "?"}/{stats.toughness ?? "?"}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -144,11 +185,15 @@ function CardImage({
 export function HandTab({
   deck,
   tagMap,
+  onGoToImport,
 }: {
-  deck: Deck;
+  deck: Deck | null;
   tagMap: CardTagMap;
+  /** Wire from parent: `() => setTab("import")` */
+  onGoToImport?: () => void;
 }) {
   const fullDeck = React.useMemo(() => {
+    if (!deck) return [];
     const expanded = expandDeck(deck);
     if (!deck.commanderName) return expanded;
     const commanderIdx = expanded.findIndex(
@@ -158,9 +203,8 @@ export function HandTab({
     return [...expanded.slice(0, commanderIdx), ...expanded.slice(commanderIdx + 1)];
   }, [deck]);
 
-  // The commander lives in the command zone and is never part of the shuffled library.
   const commanderEntry = React.useMemo(() => {
-    if (!deck.commanderName) return null;
+    if (!deck?.commanderName) return null;
     return (
       deck.entries.find(
         (e) => e.card.name.toLowerCase() === deck.commanderName!.toLowerCase()
@@ -168,38 +212,72 @@ export function HandTab({
     );
   }, [deck]);
 
-  const totalDeckCards = deck.entries.reduce((s, e) => s + e.count, 0);
-
   const uidCounter = React.useRef(0);
   const nextUid = () => `fc-${++uidCounter.current}`;
 
-  const [library, setLibrary]         = React.useState<ScryfallCard[]>([]);
-  const [hand, setHand]               = React.useState<ScryfallCard[]>([]);
-  const [handSize, setHandSize]       = React.useState(7);
-  const [hoveredCard, setHoveredCard] = React.useState<ScryfallCard | null>(null);
+  const battlefieldRef = React.useRef<HTMLDivElement>(null);
+  const dragRef = React.useRef<{
+    uid: string;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+  const dragMovedRef = React.useRef(false);
+
+  const [library, setLibrary] = React.useState<ScryfallCard[]>([]);
+  const [hand, setHand] = React.useState<FieldCard[]>([]);
+  const [battlefield, setBattlefield] = React.useState<BattlefieldCard[]>([]);
+  const [graveyard, setGraveyard] = React.useState<ScryfallCard[]>([]);
+  const [exile, setExile] = React.useState<ScryfallCard[]>([]);
+  const [turn, setTurn] = React.useState(1);
+  const [life, setLife] = React.useState(40);
   const [imageStates, setImageStates] = React.useState<
     Record<string, { url: string; loading: boolean }>
   >({});
-  const [battlefield, setBattlefield] = React.useState<FieldCard[]>([]);
-  const [graveyard, setGraveyard]     = React.useState<FieldCard[]>([]);
-  const [tappedUids, setTappedUids]   = React.useState<Set<string>>(new Set());
-  const [turn, setTurn]               = React.useState(1);
-  const [landPlayedThisTurn, setLandPlayedThisTurn] = React.useState(false);
+  const [contextMenu, setContextMenu] = React.useState<ContextMenuState>(null);
+  const [libraryModalOpen, setLibraryModalOpen] = React.useState(false);
+  const [handExpanded, setHandExpanded] = React.useState(true);
 
-  // ── Derived mana pool ────────────────────────────────────────────────────
-  const untappedLands = battlefield.filter(({ card, uid }) => isLand(card) && !tappedUids.has(uid));
-  const tappedLands   = battlefield.filter(({ card, uid }) => isLand(card) && tappedUids.has(uid));
-  const manaAvailable = untappedLands.length;
-  const totalLands    = untappedLands.length + tappedLands.length;
+  const restartGame = React.useCallback(() => {
+    const shuffled = shuffle(fullDeck);
+    const opening = Math.min(7, shuffled.length);
+    setLibrary(shuffled.slice(opening));
+    setHand(
+      shuffled.slice(0, opening).map((card) => ({
+        card,
+        uid: nextUid(),
+      }))
+    );
+    setBattlefield([]);
+    setGraveyard([]);
+    setExile([]);
+    setTurn(1);
+    setLife(40);
+    setContextMenu(null);
+  }, [fullDeck]);
 
-  // ── Image loading (all visible zones) ───────────────────────────────────
+  React.useEffect(() => {
+    if (fullDeck.length === 0) return;
+    restartGame();
+  }, [fullDeck, restartGame]);
+
+  React.useMemo(() => {
+    const cards = hand.map((h) => h.card);
+    verdictForHand(cards);
+    if (deck) mulliganAdvice(cards, deck.archetype ?? "midrange", tagMap);
+    return null;
+  }, [hand, deck, tagMap]);
+
   const allVisibleCards = React.useMemo(() => {
-    const cards: ScryfallCard[] = [...hand];
-    if (commanderEntry) cards.push(commanderEntry.card);
+    const cards: ScryfallCard[] = [...library];
+    hand.forEach(({ card }) => cards.push(card));
     battlefield.forEach(({ card }) => cards.push(card));
-    graveyard.forEach(({ card }) => cards.push(card));
+    graveyard.forEach((card) => cards.push(card));
+    exile.forEach((card) => cards.push(card));
+    if (commanderEntry) cards.push(commanderEntry.card);
     return cards;
-  }, [hand, battlefield, graveyard]);
+  }, [library, hand, battlefield, graveyard, exile, commanderEntry]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -226,7 +304,9 @@ export function HandTab({
         setImageStates((prev) => ({ ...prev, [key]: { url, loading: false } }));
       });
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [allVisibleCards]);
 
   const imageUrl = (card: ScryfallCard | null) => {
@@ -234,625 +314,483 @@ export function HandTab({
     return imageStates[normalizeImageKey(card.name)]?.url ?? CARD_BACK_URL;
   };
 
-  // ── Reset helpers ────────────────────────────────────────────────────────
-  const resetField = React.useCallback(() => {
-    setBattlefield([]);
-    setGraveyard([]);
-    setTappedUids(new Set());
-    setTurn(1);
-    setLandPlayedThisTurn(false);
+  const drawCard = React.useCallback(() => {
+    if (!library.length) return;
+    const [top, ...rest] = library;
+    if (!top) return;
+    setLibrary(rest);
+    setHand((h) => [...h, { card: top, uid: nextUid() }]);
+  }, [library]);
+
+  const shuffleLibrary = React.useCallback(() => {
+    setLibrary((lib) => shuffle(lib));
   }, []);
 
-  const newHand = React.useCallback(
-    (size = handSize) => {
-      const shuffled = shuffle(fullDeck);
-      setLibrary(shuffled.slice(size));
-      setHand(shuffled.slice(0, size));
-      setHoveredCard(shuffled[0] ?? null);
-      resetField();
-    },
-    [fullDeck, handSize, resetField]
-  );
+  const nextTurn = React.useCallback(() => {
+    setTurn((t) => t + 1);
+    drawCard();
+  }, [drawCard]);
+
+  const playHandCardToBattlefield = React.useCallback((uid: string) => {
+    setHand((h) => {
+      const idx = h.findIndex((c) => c.uid === uid);
+      if (idx < 0) return h;
+      const fc = h[idx]!;
+      setBattlefield((bf) => {
+        const pos = nextBattlefieldPosition(bf.length);
+        return [...bf, { ...fc, x: pos.x, y: pos.y, tapped: false }];
+      });
+      return [...h.slice(0, idx), ...h.slice(idx + 1)];
+    });
+  }, []);
+
+  const moveHandToGraveyard = React.useCallback((uid: string) => {
+    setHand((h) => {
+      const idx = h.findIndex((c) => c.uid === uid);
+      if (idx < 0) return h;
+      const fc = h[idx]!;
+      setGraveyard((gy) => [...gy, fc.card]);
+      return [...h.slice(0, idx), ...h.slice(idx + 1)];
+    });
+  }, []);
+
+  const moveHandToExile = React.useCallback((uid: string) => {
+    setHand((h) => {
+      const idx = h.findIndex((c) => c.uid === uid);
+      if (idx < 0) return h;
+      const fc = h[idx]!;
+      setExile((ex) => [...ex, fc.card]);
+      return [...h.slice(0, idx), ...h.slice(idx + 1)];
+    });
+  }, []);
+
+  const moveBattlefieldToHand = React.useCallback((uid: string) => {
+    setBattlefield((bf) => {
+      const fc = bf.find((c) => c.uid === uid);
+      if (!fc) return bf;
+      setHand((h) => [...h, { card: fc.card, uid: nextUid() }]);
+      return bf.filter((c) => c.uid !== uid);
+    });
+  }, []);
+
+  const moveBattlefieldToGraveyard = React.useCallback((uid: string) => {
+    setBattlefield((bf) => {
+      const fc = bf.find((c) => c.uid === uid);
+      if (!fc) return bf;
+      setGraveyard((gy) => [...gy, fc.card]);
+      return bf.filter((c) => c.uid !== uid);
+    });
+  }, []);
+
+  const moveBattlefieldToExile = React.useCallback((uid: string) => {
+    setBattlefield((bf) => {
+      const fc = bf.find((c) => c.uid === uid);
+      if (!fc) return bf;
+      setExile((ex) => [...ex, fc.card]);
+      return bf.filter((c) => c.uid !== uid);
+    });
+  }, []);
+
+  const toggleTap = React.useCallback((uid: string) => {
+    setBattlefield((bf) =>
+      bf.map((c) => (c.uid === uid ? { ...c, tapped: !c.tapped } : c))
+    );
+  }, []);
+
+  const handleBattlefieldPointerDown = (e: React.PointerEvent, uid: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const fc = battlefield.find((c) => c.uid === uid);
+    if (!fc || !battlefieldRef.current) return;
+    dragMovedRef.current = false;
+    dragRef.current = {
+      uid,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: fc.x,
+      origY: fc.y,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleBattlefieldPointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || !battlefieldRef.current) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (Math.hypot(dx, dy) > 4) dragMovedRef.current = true;
+    const rect = battlefieldRef.current.getBoundingClientRect();
+    const maxX = Math.max(0, rect.width - BF_CARD_W);
+    const maxY = Math.max(0, rect.height - BF_CARD_H);
+    const nx = Math.min(maxX, Math.max(0, drag.origX + dx));
+    const ny = Math.min(maxY, Math.max(0, drag.origY + dy));
+    setBattlefield((bf) =>
+      bf.map((c) => (c.uid === drag.uid ? { ...c, x: nx, y: ny } : c))
+    );
+  };
+
+  const handleBattlefieldPointerUp = () => {
+    dragRef.current = null;
+    window.setTimeout(() => {
+      dragMovedRef.current = false;
+    }, 0);
+  };
+
+  const openContextMenu = (
+    e: React.MouseEvent,
+    zone: "hand" | "battlefield",
+    uid: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, zone, uid });
+  };
 
   React.useEffect(() => {
-    const start = Math.min(7, fullDeck.length);
-    setHandSize(start);
-    const shuffled = shuffle(fullDeck);
-    setLibrary(shuffled.slice(start));
-    setHand(shuffled.slice(0, start));
-    setHoveredCard(shuffled[0] ?? null);
-    resetField();
-  }, [fullDeck, resetField]);
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, []);
 
-  // ── Actions ──────────────────────────────────────────────────────────────
-  const drawCard = () => {
-    if (!library.length) return;
-    setHand((h) => [...h, library[0]!]);
-    setLibrary((lib) => lib.slice(1));
-  };
+  const sidebarBtn =
+    "w-full rounded-md border border-primary/30 bg-primary/90 px-2 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-40";
+  const sidebarBtnPrimary =
+    "w-full rounded-md border border-primary bg-primary px-2 py-2.5 text-xs font-bold text-primary-foreground shadow-md ring-2 ring-primary/30 transition hover:bg-primary/90";
 
-  const nextTurn = () => {
-    setTurn((t) => t + 1);
-    setLandPlayedThisTurn(false);
-    setTappedUids(new Set()); // untap step
-    drawCard();
-  };
+  const showEmpty = !deck || fullDeck.length === 0;
+  const topGy = graveyard[graveyard.length - 1];
+  const topExile = exile[exile.length - 1];
 
-  const mulligan = () => {
-    const next = Math.max(0, handSize - 1);
-    setHandSize(next);
-    newHand(next);
-  };
-
-  const removeFromHand = (idx: number): ScryfallCard | null => {
-    const card = hand[idx];
-    if (!card) return null;
-    setHand((cur) => {
-      if (cur[idx]?.id !== card.id) return cur;
-      return [...cur.slice(0, idx), ...cur.slice(idx + 1)];
-    });
-    return card;
-  };
-
-  const playLand = (idx: number) => {
-    if (landPlayedThisTurn) return;
-    const card = removeFromHand(idx);
-    if (!card || !isLand(card)) return;
-    setBattlefield((bf) => [...bf, { card, uid: nextUid() }]);
-    setLandPlayedThisTurn(true);
-  };
-
-  const castCard = (idx: number) => {
-    const card = hand[idx];
-    if (!card || isLand(card)) return;
-    const cost = Math.max(0, Math.ceil(card.cmc));
-    if (cost > manaAvailable) return;
-
-    // Auto-tap the required number of untapped lands
-    const toTap = untappedLands.slice(0, cost).map(({ uid }) => uid);
-    setTappedUids((prev) => {
-      const next = new Set(prev);
-      toTap.forEach((uid) => next.add(uid));
-      return next;
-    });
-
-    removeFromHand(idx);
-    if (isPermanent(card)) {
-      setBattlefield((bf) => [...bf, { card, uid: nextUid() }]);
-    } else {
-      setGraveyard((gy) => [...gy, { card, uid: nextUid() }]);
-    }
-  };
-
-  const discardCard = (idx: number) => {
-    const card = removeFromHand(idx);
-    if (!card) return;
-    setGraveyard((gy) => [...gy, { card, uid: nextUid() }]);
-  };
-
-  const toggleTap = (uid: string) => {
-    setTappedUids((prev) => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid); else next.add(uid);
-      return next;
-    });
-  };
-
-  const sendToGraveyard = (uid: string) => {
-    setBattlefield((bf) => {
-      const fc = bf.find((x) => x.uid === uid);
-      if (!fc) return bf;
-      setGraveyard((gy) => [...gy, { card: fc.card, uid: nextUid() }]);
-      return bf.filter((x) => x.uid !== uid);
-    });
-    setTappedUids((prev) => { const next = new Set(prev); next.delete(uid); return next; });
-  };
-
-  const returnToHand = (uid: string) => {
-    setBattlefield((bf) => {
-      const fc = bf.find((x) => x.uid === uid);
-      if (!fc) return bf;
-      setHand((h) => [...h, fc.card]);
-      return bf.filter((x) => x.uid !== uid);
-    });
-    setTappedUids((prev) => { const next = new Set(prev); next.delete(uid); return next; });
-  };
-
-  // ── Mulligan analysis ────────────────────────────────────────────────────
-  const advice       = mulliganAdvice(hand, deck.archetype ?? "midrange", tagMap);
-  const baseVerdict  = verdictForHand(hand);
-  const handLands    = hand.filter(isLand).length;
-  const verdictColor =
-    advice.verdict === "Keep"    ? "text-emerald-600 dark:text-emerald-400" :
-    advice.verdict === "Mulligan"? "text-destructive" : "text-amber-600 dark:text-amber-400";
-
-  // ── Battlefield split ────────────────────────────────────────────────────
-  const bfLands = battlefield.filter(({ card }) => isLand(card));
-  const bfPerms = battlefield.filter(({ card }) => !isLand(card));
-
-  // ── Command zone panel ───────────────────────────────────────────────────
-  const commandZone = (
-    <div className="rounded-xl border-2 border-violet-500/30 bg-muted/10">
-      <div className="flex items-center gap-2 border-b border-violet-500/20 px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-violet-500/80">
-          Command Zone
-        </span>
-      </div>
-      {commanderEntry ? (
-        <div className="p-2">
-          <div className="flex gap-3">
+  return (
+    <div
+      className="flex overflow-hidden rounded-lg border border-border bg-background text-foreground"
+      style={{ height: "calc(100vh - 11rem)", minHeight: 520 }}
+    >
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* ── Top bar ── */}
+        <div
+          className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3"
+          style={{ height: TOP_BAR_H }}
+        >
+          <div className="flex items-center gap-1.5 text-sm font-medium">
             <button
-              className="shrink-0 overflow-hidden rounded-lg border-2 border-violet-500/40 shadow-md shadow-violet-500/10 transition hover:border-violet-500/70 hover:shadow-lg"
-              style={{ width: 80 }}
-              onMouseEnter={() => setHoveredCard(commanderEntry.card)}
-              onClick={() => setHoveredCard(commanderEntry.card)}
-              title="Click to preview commander"
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted hover:bg-muted/80"
+              onClick={() => setLife((l) => Math.max(0, l - 1))}
+              aria-label="Decrease life"
             >
-              <img
-                src={imageUrl(commanderEntry.card)}
-                alt={commanderEntry.card.name}
-                style={{ width: 80, height: 112, objectFit: "cover" }}
-                loading="eager"
-                onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
+              —
+            </button>
+            <span className="min-w-[2.5rem] text-center tabular-nums">{life}</span>
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted hover:bg-muted/80"
+              onClick={() => setLife((l) => l + 1)}
+              aria-label="Increase life"
+            >
+              +
+            </button>
+          </div>
+          <span className="text-sm font-semibold text-muted-foreground">Turn {turn}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={restartGame}
+            disabled={showEmpty}
+          >
+            Restart
+          </Button>
+        </div>
+
+        {/* ── Battlefield (~75% of remaining height) ── */}
+        <div
+          ref={battlefieldRef}
+          className="relative min-h-0 flex-[3] overflow-hidden bg-muted/20"
+          onPointerMove={handleBattlefieldPointerMove}
+          onPointerUp={handleBattlefieldPointerUp}
+          onPointerLeave={handleBattlefieldPointerUp}
+        >
+          <div className="pointer-events-none absolute left-3 top-2 z-20 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            Battlefield
+            <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+          </div>
+
+          {showEmpty ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
+              <p className="text-center text-sm text-muted-foreground">
+                Import a deck to begin playtesting
+              </p>
+              <Button onClick={() => onGoToImport?.()} disabled={!onGoToImport}>
+                Go to Import
+              </Button>
+            </div>
+          ) : (
+            battlefield.map((fc) => (
+              <BattlefieldCardView
+                key={fc.uid}
+                fc={fc}
+                imageUrl={imageUrl}
+                onPointerDown={handleBattlefieldPointerDown}
+                onClick={(e, uid) => {
+                  if (dragMovedRef.current) return;
+                  e.stopPropagation();
+                  toggleTap(uid);
+                }}
+                onContextMenu={(e, uid) => openContextMenu(e, "battlefield", uid)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* ── Bottom bar ── */}
+        <div
+          className="flex shrink-0 border-t border-border bg-muted/40"
+          style={{ height: BOTTOM_BAR_H }}
+        >
+          <div className="flex min-w-0 flex-1 flex-col border-r border-border px-3 py-2">
+            <button
+              type="button"
+              className="mb-2 flex items-center gap-1 text-left text-xs font-semibold text-muted-foreground"
+              onClick={() => setHandExpanded((v) => !v)}
+            >
+              Hand ({hand.length})
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${handExpanded ? "" : "-rotate-90"}`}
+                aria-hidden
               />
             </button>
-            <div className="min-w-0 flex-1 space-y-1.5 py-0.5">
-              <div className="text-[13px] font-semibold leading-tight">
-                {commanderEntry.card.name}
+            {handExpanded ? (
+              <div className="flex flex-1 items-end gap-2 overflow-x-auto pb-1">
+                {hand.length === 0 ? (
+                  <span className="text-xs text-muted-foreground/60">No cards in hand</span>
+                ) : (
+                  hand.map((fc) => (
+                    <button
+                      key={fc.uid}
+                      type="button"
+                      className="shrink-0 overflow-hidden rounded-md border border-border bg-card shadow-md transition hover:ring-2 hover:ring-primary/40"
+                      style={{ width: HAND_CARD_W, height: HAND_CARD_H }}
+                      onClick={() => playHandCardToBattlefield(fc.uid)}
+                      onContextMenu={(e) => openContextMenu(e, "hand", fc.uid)}
+                      disabled={showEmpty}
+                    >
+                      <img
+                        src={imageUrl(fc.card)}
+                        alt={fc.card.name}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                        onError={(e) => {
+                          e.currentTarget.src = CARD_BACK_URL;
+                        }}
+                      />
+                    </button>
+                  ))
+                )}
               </div>
-              <div className="text-[11px] text-muted-foreground leading-snug">
-                {commanderEntry.card.type_line}
-              </div>
-              {commanderEntry.card.mana_cost && (
-                <div className="text-[11px] font-mono text-muted-foreground">
-                  {commanderEntry.card.mana_cost}
-                </div>
-              )}
-              <div className="space-y-0.5 pt-1 border-t border-muted/40">
-                <div className="text-[10px] text-muted-foreground capitalize">
-                  <span className="font-medium text-foreground/70">Archetype:</span>{" "}
-                  {deck.archetype ?? "midrange"}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  <span className="font-medium text-foreground/70">Deck size:</span>{" "}
-                  {totalDeckCards} cards
-                </div>
-              </div>
-            </div>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 items-center justify-end gap-5 px-4">
+            <ZoneTracker
+              label="Library"
+              count={library.length}
+              imageSrc={CARD_BACK_URL}
+              alt="Library"
+            />
+            <ZoneTracker
+              label="Graveyard"
+              count={graveyard.length}
+              imageSrc={topGy ? imageUrl(topGy) : null}
+              alt={topGy?.name ?? "Graveyard"}
+            />
+            <ZoneTracker
+              label="Exile"
+              count={exile.length}
+              imageSrc={topExile ? imageUrl(topExile) : null}
+              alt={topExile?.name ?? "Exile"}
+            />
+            <ZoneTracker
+              label="Command"
+              count={commanderEntry ? 1 : 0}
+              imageSrc={commanderEntry ? imageUrl(commanderEntry.card) : null}
+              alt={commanderEntry?.card.name ?? "Commander"}
+            />
           </div>
         </div>
-      ) : (
-        <div className="px-3 py-5 text-center text-xs text-muted-foreground">
-          No commander set for this deck.
+      </div>
+
+      {/* ── Right sidebar ── */}
+      <aside
+        className="flex shrink-0 flex-col gap-2 border-l border-border bg-muted/40 p-2"
+        style={{ width: SIDEBAR_W }}
+      >
+        <button type="button" className={sidebarBtn} onClick={restartGame} disabled={showEmpty}>
+          Restart
+        </button>
+        <button type="button" className={sidebarBtn} onClick={shuffleLibrary} disabled={showEmpty}>
+          Shuffle
+        </button>
+        <button
+          type="button"
+          className={sidebarBtn}
+          onClick={() => setLibraryModalOpen(true)}
+          disabled={showEmpty}
+        >
+          View Library
+        </button>
+        <button type="button" className={sidebarBtn} onClick={drawCard} disabled={showEmpty || !library.length}>
+          Draw
+        </button>
+        <button type="button" className={sidebarBtnPrimary} onClick={nextTurn} disabled={showEmpty}>
+          Next Turn
+        </button>
+      </aside>
+
+      {contextMenu ? (
+        <div
+          className="fixed z-[100] min-w-[168px] overflow-hidden rounded-md border border-border bg-popover py-1 text-xs shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.zone === "hand" ? (
+            <>
+              <ContextMenuItem
+                label="Play to Battlefield"
+                onClick={() => {
+                  playHandCardToBattlefield(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Move to Graveyard"
+                onClick={() => {
+                  moveHandToGraveyard(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Move to Exile"
+                onClick={() => {
+                  moveHandToExile(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <ContextMenuItem
+                label="Move to Hand"
+                onClick={() => {
+                  moveBattlefieldToHand(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Move to Graveyard"
+                onClick={() => {
+                  moveBattlefieldToGraveyard(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Move to Exile"
+                onClick={() => {
+                  moveBattlefieldToExile(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+            </>
+          )}
         </div>
-      )}
+      ) : null}
+
+      {libraryModalOpen ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setLibraryModalOpen(false)}
+        >
+          <div
+            className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-border bg-background shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <h3 className="text-sm font-semibold">Library ({library.length} cards)</h3>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setLibraryModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <ol className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+              {library.length === 0 ? (
+                <li className="text-muted-foreground">Library is empty.</li>
+              ) : (
+                library.map((card, i) => (
+                  <li
+                    key={`${card.id}-${i}`}
+                    className="border-b border-border/50 py-1.5 text-foreground"
+                  >
+                    {i + 1}. {card.name}
+                  </li>
+                ))
+              )}
+            </ol>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
 
-  // ── Preview panel (shared) ───────────────────────────────────────────────
-  const previewPanel = (
-    <div className="flex flex-col gap-2">
-      <div className="overflow-hidden rounded-xl border bg-muted/20 p-2">
-        {hoveredCard ? (
-          <img
-            src={imageUrl(hoveredCard)}
-            alt={hoveredCard.name}
-            className="mx-auto h-auto max-h-[420px] w-auto rounded-md object-contain"
-            onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
-          />
+function ZoneTracker({
+  label,
+  count,
+  imageSrc,
+  alt,
+}: {
+  label: string;
+  count: number;
+  imageSrc: string | null;
+  alt: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label} ({count})
+      </span>
+      <div
+        className="overflow-hidden rounded border border-border bg-card"
+        style={{ width: 48, height: 67 }}
+      >
+        {imageSrc ? (
+          <img src={imageSrc} alt={alt} className="h-full w-full object-cover" draggable={false} />
         ) : (
-          <div className="flex min-h-[280px] items-center justify-center text-center text-sm text-muted-foreground">
-            Hover any card to preview
+          <div className="flex h-full w-full items-center justify-center text-[9px] text-muted-foreground/50">
+            —
           </div>
         )}
       </div>
-      {hoveredCard && (
-        <div className="space-y-0.5 px-1">
-          <div className="text-sm font-medium">{hoveredCard.name}</div>
-          <div className="text-xs text-muted-foreground">{hoveredCard.type_line}</div>
-          {hoveredCard.oracle_text && (
-            <div className="mt-1 max-h-[120px] overflow-auto rounded border bg-muted/20 p-2 text-xs leading-relaxed text-muted-foreground">
-              {hoveredCard.oracle_text}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
+}
 
+function ContextMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <div className="grid gap-6">
-
-      {/* ── Global controls ────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => newHand()}>New hand</Button>
-        <Button variant="secondary" onClick={mulligan} disabled={handSize <= 0}>
-          Mulligan → {Math.max(0, handSize - 1)} cards
-        </Button>
-        <Button variant="outline" onClick={drawCard} disabled={!library.length}>
-          Draw a card
-        </Button>
-        <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <Badge variant="outline">Library: {library.length}</Badge>
-          <Badge variant="secondary">Hand: {hand.length}</Badge>
-        </div>
-      </div>
-
-      {/* ── Opening hand spread + mulligan advice ──────────────────────── */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Opening hand</CardTitle>
-              <div className="flex items-center gap-2">
-                <span className={`text-sm font-semibold ${verdictColor}`}>
-                  {advice.verdict}
-                </span>
-                <Badge variant="secondary">Lands: {handLands}</Badge>
-                <Badge variant="outline">Baseline: {baseVerdict}</Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* Fan of cards */}
-            <div className="flex flex-wrap items-end justify-center gap-2 px-1 py-3">
-              {hand.map((card, idx) => {
-                const center = (hand.length - 1) / 2;
-                const offset = idx - center;
-                const angle  = offset * 1.4;
-                const lift   = Math.min(Math.abs(offset) * 1.5, 8);
-                return (
-                  <div
-                    key={`${card.id}-${idx}`}
-                    className="group relative cursor-pointer transition duration-200 hover:z-20"
-                    style={{ transform: `translateY(${lift}px) rotate(${angle}deg)` }}
-                    onMouseEnter={() => setHoveredCard(card)}
-                  >
-                    <div className="w-[108px] overflow-hidden rounded-xl border bg-card shadow-md transition-transform duration-200 group-hover:-translate-y-2 group-hover:shadow-xl sm:w-[120px] xl:w-[132px]">
-                      <img
-                        src={imageUrl(card)}
-                        alt={card.name}
-                        className="aspect-5/7 w-full object-cover"
-                        loading="eager"
-                        draggable={false}
-                        onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Mulligan reasoning */}
-            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-              <div className="mb-1 text-xs text-muted-foreground">
-                Archetype: <span className="capitalize text-foreground">{deck.archetype ?? "midrange"}</span>
-                {" · "}Ramp in hand: {advice.ramp}
-                {" · "}Interaction: {advice.interaction}
-              </div>
-              <ul className="space-y-0.5 text-xs text-muted-foreground">
-                {advice.reasons.map((r, i) => (
-                  <li key={`${r}-${i}`}>• {r}</li>
-                ))}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Command zone + preview */}
-        <div className="hidden lg:flex lg:flex-col lg:gap-4">
-          {commandZone}
-          {previewPanel}
-        </div>
-      </div>
-
-      {/* ── Field test ─────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-base">Field test</CardTitle>
-              <Badge variant="secondary">Turn {turn}</Badge>
-            </div>
-            {/* Mana pool display */}
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <div className="flex items-center gap-1.5 rounded-full border bg-background px-3 py-1">
-                <span className="text-xs text-muted-foreground">Mana available</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{manaAvailable}</span>
-                <span className="text-xs text-muted-foreground">/ {totalLands}</span>
-              </div>
-              <Badge variant={landPlayedThisTurn ? "secondary" : "default"}>
-                {landPlayedThisTurn ? "Land played" : "Land drop available"}
-              </Badge>
-            </div>
-            {/* Turn controls */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="default" onClick={nextTurn} disabled={!library.length}>
-                Next turn + draw
-              </Button>
-              <Button variant="outline" onClick={resetField}>
-                Reset field
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-5">
-          <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
-            <div className="space-y-6">
-
-              {/* ── Hand ─────────────────────────────────────────────── */}
-              <section>
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-sm font-semibold">Hand</span>
-                  <Badge variant="secondary">{hand.length}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Click a card to preview · Play lands · Cast spells (mana is auto-tapped)
-                  </span>
-                </div>
-
-                {hand.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Hand is empty.
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    {hand.map((card, idx) => {
-                      const cost          = Math.max(0, Math.ceil(card.cmc));
-                      const canPlayLand   = isLand(card) && !landPlayedThisTurn;
-                      const canCast       = !isLand(card) && cost <= manaAvailable;
-                      const cantAfford    = !isLand(card) && cost > manaAvailable;
-                      return (
-                        <div
-                          key={`${card.id}-hand-${idx}`}
-                          className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md"
-                          style={{ width: CARD_W }}
-                          onMouseEnter={() => setHoveredCard(card)}
-                        >
-                          <div className="relative">
-                            <img
-                              src={imageUrl(card)}
-                              alt={card.name}
-                              style={{ width: CARD_W, height: CARD_H, objectFit: "cover" }}
-                              loading="eager"
-                              draggable={false}
-                              onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
-                            />
-                            {/* Mana value badge */}
-                            {!isLand(card) && (
-                              <span
-                                className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
-                                  canCast
-                                    ? "bg-emerald-500 text-white"
-                                    : cantAfford
-                                      ? "bg-muted/90 text-muted-foreground"
-                                      : "bg-muted/90 text-muted-foreground"
-                                }`}
-                              >
-                                {cost}
-                              </span>
-                            )}
-                            {isLand(card) && canPlayLand && (
-                              <span className="absolute right-1 top-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                                Play
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-1 p-1.5">
-                            <div className="truncate text-[10px] font-medium leading-tight">
-                              {card.name}
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {isLand(card) ? (
-                                <button
-                                  className={`flex-1 rounded px-1 py-0.5 text-[10px] font-medium transition-colors ${
-                                    canPlayLand
-                                      ? "bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 dark:text-blue-400"
-                                      : "cursor-not-allowed bg-muted/40 text-muted-foreground"
-                                  }`}
-                                  onClick={() => playLand(idx)}
-                                  disabled={!canPlayLand}
-                                >
-                                  {landPlayedThisTurn ? "Used" : "Play"}
-                                </button>
-                              ) : (
-                                <button
-                                  className={`flex-1 rounded px-1 py-0.5 text-[10px] font-medium transition-colors ${
-                                    canCast
-                                      ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400"
-                                      : "cursor-not-allowed bg-muted/40 text-muted-foreground"
-                                  }`}
-                                  onClick={() => castCard(idx)}
-                                  disabled={!canCast}
-                                >
-                                  {cantAfford ? `Need ${cost}` : `Cast`}
-                                </button>
-                              )}
-                              <button
-                                className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
-                                onClick={() => discardCard(idx)}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              {/* ── Battlefield ──────────────────────────────────────── */}
-              <section>
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-sm font-semibold">Battlefield</span>
-                  <Badge variant="secondary">{battlefield.length}</Badge>
-                  {bfLands.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      Click a land to tap/untap · tapped lands are rotated
-                    </span>
-                  )}
-                </div>
-
-                {battlefield.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Nothing in play yet — play lands and cast permanents from your hand.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Non-land permanents sub-zone — sits above lands */}
-                    {bfPerms.length > 0 && (
-                      <div>
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">
-                          Permanents
-                        </div>
-                        <div className="flex flex-wrap items-start gap-3">
-                          {bfPerms.map(({ card, uid }) => (
-                            <div key={uid} className="flex flex-col items-center gap-1">
-                              <div
-                                className="group relative overflow-hidden rounded-lg border transition-shadow hover:shadow-md"
-                                style={{ width: CARD_W }}
-                                onMouseEnter={() => setHoveredCard(card)}
-                              >
-                                <img
-                                  src={imageUrl(card)}
-                                  alt={card.name}
-                                  style={{ width: CARD_W, height: CARD_H, objectFit: "cover" }}
-                                  loading="eager"
-                                  draggable={false}
-                                  onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
-                                />
-                                <div className="bg-background/80 p-1">
-                                  <div className="truncate text-[10px] font-medium">{card.name}</div>
-                                </div>
-                              </div>
-                              <div className="flex gap-1">
-                                <button
-                                  className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
-                                  onClick={() => sendToGraveyard(uid)}
-                                >
-                                  → Gy
-                                </button>
-                                <button
-                                  className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
-                                  onClick={() => returnToHand(uid)}
-                                >
-                                  → Hand
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Lands sub-zone — sits below permanents */}
-                    {bfLands.length > 0 && (
-                      <div>
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">
-                          Lands — {untappedLands.length} untapped (mana available) · {tappedLands.length} tapped
-                        </div>
-                        <div className="flex flex-wrap items-end gap-3">
-                          {bfLands.map(({ card, uid }) => {
-                            const tapped = tappedUids.has(uid);
-                            return (
-                              <div key={uid} className="flex flex-col items-center gap-1">
-                                <button
-                                  className={`group relative cursor-pointer rounded-lg border-2 transition-all duration-200 focus:outline-none ${
-                                    tapped
-                                      ? "border-amber-500/60 opacity-75 hover:opacity-90"
-                                      : "border-emerald-500/60 hover:border-emerald-500 hover:shadow-md hover:shadow-emerald-500/20"
-                                  }`}
-                                  onClick={() => toggleTap(uid)}
-                                  onMouseEnter={() => setHoveredCard(card)}
-                                  title={tapped ? "Untap" : "Tap for mana"}
-                                  style={{ overflow: "hidden" }}
-                                >
-                                  <CardImage
-                                    imageUrl={imageUrl(card)}
-                                    alt={card.name}
-                                    tapped={tapped}
-                                  />
-                                  <div className={`absolute bottom-0 inset-x-0 flex justify-center py-0.5 text-[9px] font-bold leading-none ${
-                                    tapped ? "bg-amber-500/80 text-white" : "bg-emerald-500/80 text-white"
-                                  }`}>
-                                    {tapped ? "TAPPED" : "UNTAPPED"}
-                                  </div>
-                                </button>
-                                <button
-                                  className="text-[10px] text-muted-foreground hover:text-destructive"
-                                  onClick={() => sendToGraveyard(uid)}
-                                >
-                                  → Gy
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              {/* ── Graveyard + Library stat ──────────────────────── */}
-              <section>
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-sm font-semibold">Graveyard</span>
-                  <Badge variant="secondary">{graveyard.length}</Badge>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    Library: {library.length} cards remaining
-                  </span>
-                </div>
-                {graveyard.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                    Empty
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {graveyard.map(({ card, uid }) => (
-                      <div
-                        key={uid}
-                        className="relative overflow-hidden rounded-lg border opacity-70 grayscale-[0.3] transition-opacity hover:opacity-90"
-                        style={{ width: 60 }}
-                        onMouseEnter={() => setHoveredCard(card)}
-                      >
-                        <img
-                          src={imageUrl(card)}
-                          alt={card.name}
-                          style={{ width: 60, height: 84, objectFit: "cover" }}
-                          loading="eager"
-                          draggable={false}
-                          onError={(e) => { e.currentTarget.src = CARD_BACK_URL; }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
-
-            {/* Sticky command zone + preview — desktop */}
-            <div className="hidden lg:sticky lg:top-28 lg:flex lg:flex-col lg:gap-4">
-              {commandZone}
-              {previewPanel}
-            </div>
-          </div>
-
-          {/* Mobile: command zone + preview */}
-          <div className="flex flex-col gap-4 lg:hidden">
-            {commandZone}
-            {previewPanel}
-          </div>
-
-          <div className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">How it works: </span>
-            Play lands from your hand (1 per turn) · Cast spells — the required lands
-            auto-tap · Click lands on the battlefield to tap or untap manually ·
-            "Next turn" draws a card and untaps everything.
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <button
+      type="button"
+      className="block w-full px-3 py-1.5 text-left hover:bg-muted"
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }

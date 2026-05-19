@@ -159,13 +159,10 @@ function persistCache(requestedName: string, card: ScryfallCard) {
 }
 
 function headersForFetchUrl(url: string): HeadersInit {
-  if (typeof window !== "undefined" && url.startsWith("/api")) {
-    return { Accept: "application/json" };
+  if (url.includes("api.scryfall.com")) {
+    return scryfallFetchHeaders();
   }
-  if (typeof window !== "undefined") {
-    return { Accept: "application/json" };
-  }
-  return scryfallFetchHeaders();
+  return { Accept: "application/json" };
 }
 
 async function fetchCardPayload(url: string): Promise<{
@@ -239,8 +236,8 @@ async function postScryfallCollectionDirect(names: string[]) {
     const res = await fetch("https://api.scryfall.com/cards/collection", {
       method: "POST",
       headers: {
+        ...scryfallFetchHeaders(),
         "Content-Type": "application/json",
-        Accept: "application/json",
       },
       body: JSON.stringify({ identifiers: names.map((name) => ({ name })) }),
       cache: "no-store",

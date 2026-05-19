@@ -57,7 +57,24 @@ function StatCard({
   );
 }
 
-export function OverviewTab({
+function OverviewLanding({ onImport }: { onImport: () => void }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Welcome to DeepScry</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm text-muted-foreground">
+        <p>
+          Paste a decklist from Moxfield, Archidekt, or EDHREC using the Import tab to get
+          started.
+        </p>
+        <Button onClick={onImport}>Go to Import →</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewDeckContent({
   deck,
   tagMap,
   onRemoveCard,
@@ -455,6 +472,37 @@ export function OverviewTab({
 
       <BudgetTuner deck={deck} />
     </div>
+  );
+}
+
+export function OverviewTab({
+  deck,
+  tagMap,
+  onRemoveCard,
+  onEditImport,
+  onStartOver,
+  onImport,
+}: {
+  deck: Deck | null;
+  tagMap: CardTagMap;
+  onRemoveCard: (cardId: string) => void;
+  onEditImport: () => void;
+  onStartOver: () => void;
+  onImport?: () => void;
+}) {
+  if (!deck) {
+    if (!onImport) return null;
+    return <OverviewLanding onImport={onImport} />;
+  }
+
+  return (
+    <OverviewDeckContent
+      deck={deck}
+      tagMap={tagMap}
+      onRemoveCard={onRemoveCard}
+      onEditImport={onEditImport}
+      onStartOver={onStartOver}
+    />
   );
 }
 

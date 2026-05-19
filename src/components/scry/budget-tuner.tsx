@@ -144,16 +144,19 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     done: 0,
     total: 0,
   });
-  const [suggestions, setSuggestions] = React.useState<
-    {
-      card: ScryfallCard;
-      price: number;
-      reason: string;
-      impact: number;
-      category: Candidate["category"];
-      deckBenefit: string;
-    }[]
-  >([]);
+  type SuggestionRow = {
+    card: ScryfallCard;
+    price: number | null;
+    priceStatus: "loading" | "ready" | "unavailable";
+    reason: string;
+    impact: number;
+    category: Candidate["category"];
+    deckBenefit: string;
+  };
+
+  const [suggestions, setSuggestions] = React.useState<SuggestionRow[]>([]);
+  const [isLoadingSuggestionPrices, setIsLoadingSuggestionPrices] =
+    React.useState(false);
   const [hovered, setHovered] = React.useState<ScryfallCard | null>(null);
   const hydrationStateRef = React.useRef<{
     deckSignature: string;
@@ -205,6 +208,19 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
       return p !== null && p !== undefined;
     }).length;
   }, [deck.entries, priceMap]);
+
+  const unpricedDeckCardCount = React.useMemo(() => {
+    return deck.entries.filter((e) => {
+      const p =
+        priceMap[e.card.id] !== undefined
+          ? priceMap[e.card.id]
+          : e.card.price_usd ?? null;
+      return p === null || p === undefined;
+    }).length;
+  }, [deck.entries, priceMap]);
+
+  const isCalculatingDeckValue =
+    isHydratingEstimate || isRefreshing || priceProgress.total > 0;
 
   const totalUniqueCount = deck.entries.length;
   const coverageRatio =
@@ -316,8 +332,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
       commanderColors.size > 0
         ? `ci<=${Array.from(commanderColors).join("").toLowerCase()}`
         : "";
-    const priceFilter = priceCeiling ? `usd<=${priceCeiling.toFixed(2)}` : "";
-    const baseFilter = ["legal:commander", "-t:land", colorFilter, priceFilter]
+    const baseFilter = ["legal:commander", "-t:land", colorFilter]
       .filter(Boolean)
       .join(" ");
     const plans: SearchPlan[] = [];
@@ -367,7 +382,6 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
     const out: {
       card: ScryfallCard;
-      price: number;
       reason: string;
       impact: number;
       category: Candidate["category"];
@@ -385,9 +399,6 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
       for (const card of cards.slice(0, 8)) {
         if (seen.has(card.name.toLowerCase())) continue;
         if (!colorLegal(card.color_identity, commanderColors)) continue;
-        if (priceCeiling !== null && card.price_usd === null) continue;
-        const p = card.price_usd ?? 0;
-        if (priceCeiling !== null && p > priceCeiling) continue;
         const impact =
           plan.category === "ramp"
             ? Math.min(1, 0.5 + profileNeed.needRamp * 0.08)
@@ -402,7 +413,6 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
         seen.add(card.name.toLowerCase());
         out.push({
           card,
-          price: p,
           reason: plan.reason,
           impact,
           category: plan.category,
@@ -410,8 +420,64 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
         });
       }
     }
-    out.sort((a, b) => b.impact - a.impact || a.price - b.price);
-    setSuggestions(out.slice(0, 10));
+    out.sort((a, b) => b.impact - a.impact);
+    const candidates = out.slice(0, 10);
+
+    setSuggestions(
+      candidates.map((c) => ({
+        ...c,
+        price: null,
+        priceStatus: "loading" as const,
+      }))
+    );
+    setIsLoadingSuggestionPrices(true);
+
+    const priced = await Promise.all(
+      candidates.map(async (c) => {
+        try {
+          const fetched = await fetchCardById(c.card.id);
+          const usd = fetched.price_usd;
+          if (usd === null || usd === undefined) {
+            return {
+              ...c,
+              card: fetched,
+              price: null,
+              priceStatus: "unavailable" as const,
+            };
+          }
+          return {
+            ...c,
+            card: fetched,
+            price: usd,
+            priceStatus: "ready" as const,
+          };
+        } catch {
+          return {
+            ...c,
+            price: null,
+            priceStatus: "unavailable" as const,
+          };
+        }
+      })
+    );
+
+    const withinBudget =
+      priceCeiling !== null
+        ? priced.filter(
+            (s) =>
+              s.priceStatus === "ready" &&
+              s.price !== null &&
+              s.price <= priceCeiling + 0.005
+          )
+        : priced;
+
+    withinBudget.sort(
+      (a, b) =>
+        b.impact - a.impact ||
+        (a.price ?? Infinity) - (b.price ?? Infinity)
+    );
+    setSuggestions(withinBudget);
+    setIsLoadingSuggestionPrices(false);
   }, [
     deck,
     stats.rampCount,
@@ -496,7 +562,28 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
         </p>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-x-6">
+        <div className="rounded-lg border-2 border-primary/20 bg-primary/5 px-4 py-3">
+          <div className="text-sm font-medium text-foreground">
+            {isCalculatingDeckValue ? (
+              "Calculating deck value..."
+            ) : (
+              <>
+                Current deck value:{" "}
+                <span className="text-lg font-bold tabular-nums">
+                  ${currentDeckPrice.toFixed(2)}
+                </span>
+              </>
+            )}
+          </div>
+          {!isCalculatingDeckValue && unpricedDeckCardCount > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {unpricedDeckCardCount} card{unpricedDeckCardCount === 1 ? "" : "s"} have no price
+              data
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-x-6">
           {/* Left column: controls + mobile preview + suggestions */}
           <div className="min-w-0 flex-1 space-y-4">
             <div className="space-y-3">
@@ -527,21 +614,6 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
               </div>
 
               <div className="rounded border bg-muted/20 p-3 space-y-1">
-                <div className="flex items-baseline gap-2">
-                  <span>
-                    Estimated deck value:{" "}
-                    <span className="font-semibold">
-                      {isHydratingEstimate
-                        ? "loading…"
-                        : `$${currentDeckPrice.toFixed(2)}`}
-                    </span>
-                  </span>
-                  {isHydratingEstimate ? null : coverageRatio < 0.75 ? (
-                    <span className="text-xs text-amber-600 dark:text-amber-400">
-                      (partial — {pricedCardCount}/{totalUniqueCount} cards priced)
-                    </span>
-                  ) : null}
-                </div>
                 <div className="text-xs text-muted-foreground">
                   Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
                 </div>
@@ -603,10 +675,13 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                   const tier = listTier(idx, addCount);
                   const tierStyle = ADD_TIER_ROW[tier];
                   const withinPriceCeiling =
-                    priceCeiling !== null && s.price <= priceCeiling + 0.005;
+                    priceCeiling !== null &&
+                    s.priceStatus === "ready" &&
+                    s.price !== null &&
+                    s.price <= priceCeiling + 0.005;
                   return (
                     <div
-                      key={s.card.name}
+                      key={s.card.id}
                       className={`border-b px-2 py-2 last:border-b-0 ${tierStyle.row}`}
                       onMouseEnter={() => setHovered(s.card)}
                     >
@@ -629,8 +704,31 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                         >
                           {s.card.name}
                         </a>
-                        <span className="shrink-0">${s.price.toFixed(2)}</span>
+                        <span className="shrink-0 text-xs">
+                          {s.priceStatus === "loading" ? (
+                            <span className="text-muted-foreground">Fetching price…</span>
+                          ) : s.priceStatus === "unavailable" ? (
+                            <span className="text-muted-foreground">Price unavailable</span>
+                          ) : (
+                            `$${s.price!.toFixed(2)}`
+                          )}
+                        </span>
                       </div>
+                      {s.priceStatus === "ready" ? (
+                        <a
+                          href={
+                            s.card.purchase_uris?.tcgplayer ??
+                            `https://scryfall.com/search?q=${encodeURIComponent(`!"${s.card.name}"`)}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                        >
+                          {s.card.purchase_uris?.tcgplayer
+                            ? "Buy on TCGPlayer →"
+                            : "Search on Scryfall →"}
+                        </a>
+                      ) : null}
                       <div className="text-xs text-muted-foreground">{s.reason}</div>
                       <div className="text-xs text-muted-foreground">
                         Impact if added: {(s.impact * 100).toFixed(0)}%
@@ -638,28 +736,6 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                       <div className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
                         <span className="font-medium text-foreground/90">How this helps: </span>
                         {s.deckBenefit}
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
-                        {s.card.purchase_uris?.tcgplayer ? (
-                          <a
-                            href={s.card.purchase_uris.tcgplayer}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline-offset-2 hover:underline"
-                          >
-                            Buy (TCGplayer)
-                          </a>
-                        ) : null}
-                        {s.card.purchase_uris?.cardmarket ? (
-                          <a
-                            href={s.card.purchase_uris.cardmarket}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline-offset-2 hover:underline"
-                          >
-                            Buy (Cardmarket)
-                          </a>
-                        ) : null}
                       </div>
                     </div>
                   );
@@ -669,8 +745,10 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
           </div>
 
           {/* Right column: sticky preview (desktop only) */}
-          <div className="hidden lg:sticky lg:top-28 lg:z-20 lg:block lg:w-[280px] lg:shrink-0 lg:self-start">
-            {previewPanel}
+          <div className="hidden lg:block lg:w-[240px] lg:shrink-0">
+            <div className="sticky top-4 z-20">
+              {previewPanel}
+            </div>
           </div>
         </div>
 
