@@ -8,6 +8,7 @@ import { expandDeck } from "@/lib/deck";
 import { isLand } from "@/lib/stats";
 import type { ScryfallCard } from "@/lib/scryfall";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
 const IMAGE_FETCH_DELAY_MS = 90;
@@ -16,11 +17,10 @@ let imageFetchQueue = Promise.resolve();
 
 const BF_CARD_W = 72;
 const BF_CARD_H = 100;
-const HAND_CARD_W = 100;
-const HAND_CARD_H = 140;
+const HAND_CARD_ASPECT = "5 / 7";
 const TOP_BAR_H = 40;
-const BOTTOM_BAR_H = 160;
-const SIDEBAR_W = 120;
+const BOTTOM_BAR_H = 176;
+const SIDEBAR_W = 280;
 const DEFAULT_BF_X = 20;
 const DEFAULT_BF_Y = 24;
 
@@ -84,7 +84,7 @@ async function fetchCardImageUrl(cardName: string): Promise<string> {
     await delay(IMAGE_FETCH_DELAY_MS);
     try {
       const res = await fetch(
-        `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`,
+        `/api/scryfall/card?fuzzy=${encodeURIComponent(cardName)}`,
         { headers: { Accept: "application/json" }, cache: "force-cache" }
       );
       if (!res.ok) throw new Error(`${res.status}`);
@@ -119,15 +119,19 @@ function nextBattlefieldPosition(index: number) {
 function BattlefieldCardView({
   fc,
   imageUrl,
+  isHovered,
   onPointerDown,
   onClick,
   onContextMenu,
+  onHover,
 }: {
   fc: BattlefieldCard;
   imageUrl: (card: ScryfallCard | null) => string;
+  isHovered: boolean;
   onPointerDown: (e: React.PointerEvent, uid: string) => void;
   onClick: (e: React.MouseEvent, uid: string) => void;
   onContextMenu: (e: React.MouseEvent, uid: string) => void;
+  onHover: (card: ScryfallCard | null) => void;
 }) {
   const { card, tapped } = fc;
   const stats = card as CardWithStats;
@@ -146,9 +150,14 @@ function BattlefieldCardView({
       onPointerDown={(e) => onPointerDown(e, fc.uid)}
       onClick={(e) => onClick(e, fc.uid)}
       onContextMenu={(e) => onContextMenu(e, fc.uid)}
+      onMouseEnter={() => onHover(fc.card)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(fc.card)}
     >
       <div
-        className="relative h-full w-full overflow-hidden rounded-md border border-border/60 bg-card shadow-lg"
+        className={`relative h-full w-full overflow-hidden rounded-md border bg-card shadow-lg ${
+          isHovered ? "border-primary ring-2 ring-primary/50" : "border-border/60"
+        }`}
         style={{
           transform: tapped ? "rotate(90deg)" : "none",
           transformOrigin: "center center",
@@ -227,6 +236,10 @@ export function TestTab({
   >({});
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState>(null);
   const [libraryModalOpen, setLibraryModalOpen] = React.useState(false);
+  const [librarySearch, setLibrarySearch] = React.useState("");
+  const [libraryPreviewIndex, setLibraryPreviewIndex] = React.useState<number | null>(null);
+  const [drawCount, setDrawCount] = React.useState("1");
+  const [hoveredCard, setHoveredCard] = React.useState<ScryfallCard | null>(null);
   const [handExpanded, setHandExpanded] = React.useState(true);
 
   const dealOpeningHand = React.useCallback(
@@ -259,20 +272,16 @@ export function TestTab({
     restartGame();
   }, [fullDeck, restartGame]);
 
-  const allVisibleCards = React.useMemo(() => {
-    const cards: ScryfallCard[] = [...library];
-    hand.forEach(({ card }) => cards.push(card));
-    battlefield.forEach(({ card }) => cards.push(card));
-    graveyard.forEach((card) => cards.push(card));
-    exile.forEach((card) => cards.push(card));
+  const deckCardsForImages = React.useMemo(() => {
+    const cards = [...fullDeck];
     if (commanderEntry) cards.push(commanderEntry.card);
     return cards;
-  }, [library, hand, battlefield, graveyard, exile, commanderEntry]);
+  }, [fullDeck, commanderEntry]);
 
   React.useEffect(() => {
     let cancelled = false;
     const unique = Array.from(
-      new Map(allVisibleCards.map((c) => [normalizeImageKey(c.name), c])).values()
+      new Map(deckCardsForImages.map((c) => [normalizeImageKey(c.name), c])).values()
     );
 
     for (const card of unique) {
@@ -297,24 +306,106 @@ export function TestTab({
     return () => {
       cancelled = true;
     };
-  }, [allVisibleCards]);
+  }, [deckCardsForImages]);
 
   const imageUrl = (card: ScryfallCard | null) => {
     if (!card) return CARD_BACK_URL;
     return imageStates[normalizeImageKey(card.name)]?.url ?? CARD_BACK_URL;
   };
 
+  const previewImageUrl = (card: ScryfallCard | null) => {
+    if (!card) return CARD_BACK_URL;
+    return card.image_url_large || card.image_url || imageUrl(card);
+  };
+
+  const drawCards = React.useCallback(
+    (count: number) => {
+      const n = Math.max(1, Math.floor(count));
+      if (!library.length) return;
+      const take = Math.min(n, library.length);
+      const drawn = library.slice(0, take);
+      setLibrary((lib) => lib.slice(take));
+      setHand((h) => [...h, ...drawn.map((card) => ({ card, uid: nextUid() }))]);
+    },
+    [library]
+  );
+
   const drawCard = React.useCallback(() => {
-    if (!library.length) return;
-    const [top, ...rest] = library;
-    if (!top) return;
-    setLibrary(rest);
-    setHand((h) => [...h, { card: top, uid: nextUid() }]);
-  }, [library]);
+    drawCards(1);
+  }, [drawCards]);
 
   const shuffleLibrary = React.useCallback(() => {
     setLibrary((lib) => shuffle(lib));
   }, []);
+
+  const moveLibraryIndexToTop = React.useCallback((index: number) => {
+    setLibrary((lib) => {
+      const card = lib[index];
+      if (!card) return lib;
+      return [card, ...lib.slice(0, index), ...lib.slice(index + 1)];
+    });
+  }, []);
+
+  const moveLibraryIndexToBottom = React.useCallback((index: number) => {
+    setLibrary((lib) => {
+      const card = lib[index];
+      if (!card) return lib;
+      return [...lib.slice(0, index), ...lib.slice(index + 1), card];
+    });
+  }, []);
+
+  const returnHandToLibraryTop = React.useCallback((uid: string) => {
+    setHand((h) => {
+      const idx = h.findIndex((c) => c.uid === uid);
+      if (idx < 0) return h;
+      const fc = h[idx]!;
+      setLibrary((lib) => [fc.card, ...lib]);
+      return [...h.slice(0, idx), ...h.slice(idx + 1)];
+    });
+  }, []);
+
+  const returnHandToLibraryBottom = React.useCallback((uid: string) => {
+    setHand((h) => {
+      const idx = h.findIndex((c) => c.uid === uid);
+      if (idx < 0) return h;
+      const fc = h[idx]!;
+      setLibrary((lib) => [...lib, fc.card]);
+      return [...h.slice(0, idx), ...h.slice(idx + 1)];
+    });
+  }, []);
+
+  const drawLibraryIndexToHand = React.useCallback((index: number) => {
+    setLibrary((lib) => {
+      const card = lib[index];
+      if (!card) return lib;
+      setHand((h) => [...h, { card, uid: nextUid() }]);
+      const next = [...lib.slice(0, index), ...lib.slice(index + 1)];
+      setLibraryPreviewIndex((prevIdx) => {
+        if (next.length === 0) return null;
+        if (prevIdx === null) return 0;
+        if (prevIdx === index) return Math.min(index, next.length - 1);
+        if (prevIdx > index) return prevIdx - 1;
+        return prevIdx;
+      });
+      return next;
+    });
+  }, []);
+
+  const filteredLibrary = React.useMemo(() => {
+    const q = librarySearch.trim().toLowerCase();
+    if (!q) return library.map((card, index) => ({ card, index }));
+    return library
+      .map((card, index) => ({ card, index }))
+      .filter(({ card }) => card.name.toLowerCase().includes(q));
+  }, [library, librarySearch]);
+
+  const libraryPreviewCard =
+    libraryPreviewIndex !== null ? library[libraryPreviewIndex] ?? null : null;
+
+  const openLibraryModal = React.useCallback(() => {
+    setLibraryPreviewIndex(library.length > 0 ? 0 : null);
+    setLibraryModalOpen(true);
+  }, [library.length]);
 
   const nextTurn = React.useCallback(() => {
     setTurn((t) => t + 1);
@@ -531,6 +622,7 @@ export function TestTab({
               key={fc.uid}
               fc={fc}
               imageUrl={imageUrl}
+              isHovered={hoveredCard === fc.card}
               onPointerDown={handleBattlefieldPointerDown}
               onClick={(e, uid) => {
                 if (dragMovedRef.current) return;
@@ -538,6 +630,7 @@ export function TestTab({
                 toggleTap(uid);
               }}
               onContextMenu={(e, uid) => openContextMenu(e, "battlefield", uid)}
+              onHover={setHoveredCard}
             />
           ))}
         </div>
@@ -560,31 +653,45 @@ export function TestTab({
               />
             </button>
             {handExpanded ? (
-              <div className="flex flex-1 items-end gap-2 overflow-x-auto pb-1">
+              <div
+                className="grid w-full flex-1 gap-1 sm:gap-1.5"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.max(hand.length, 1)}, minmax(0, 1fr))`,
+                }}
+              >
                 {hand.length === 0 ? (
-                  <span className="text-xs text-muted-foreground/60">No cards in hand</span>
+                  <span className="col-span-full self-center text-xs text-muted-foreground/60">
+                    No cards in hand
+                  </span>
                 ) : (
-                  hand.map((fc) => (
-                    <button
-                      key={fc.uid}
-                      type="button"
-                      className="shrink-0 overflow-hidden rounded-md border border-border bg-card shadow-md transition hover:ring-2 hover:ring-primary/40"
-                      style={{ width: HAND_CARD_W, height: HAND_CARD_H }}
-                      onClick={() => playHandCardToBattlefield(fc.uid)}
-                      onContextMenu={(e) => openContextMenu(e, "hand", fc.uid)}
-                      disabled={showEmpty}
-                    >
-                      <img
-                        src={imageUrl(fc.card)}
-                        alt={fc.card.name}
-                        className="h-full w-full object-cover"
-                        draggable={false}
-                        onError={(e) => {
-                          e.currentTarget.src = CARD_BACK_URL;
-                        }}
-                      />
-                    </button>
-                  ))
+                  hand.map((fc) => {
+                    const isHovered = hoveredCard === fc.card;
+                    return (
+                      <button
+                        key={fc.uid}
+                        type="button"
+                        className={`min-w-0 overflow-hidden rounded-md border bg-card shadow-md transition hover:ring-2 hover:ring-primary/40 sm:rounded-lg ${
+                          isHovered ? "border-primary ring-2 ring-primary/50" : "border-border"
+                        }`}
+                        style={{ aspectRatio: HAND_CARD_ASPECT, maxHeight: 132 }}
+                        onClick={() => playHandCardToBattlefield(fc.uid)}
+                        onContextMenu={(e) => openContextMenu(e, "hand", fc.uid)}
+                        onMouseEnter={() => setHoveredCard(fc.card)}
+                        onFocus={() => setHoveredCard(fc.card)}
+                        disabled={showEmpty}
+                      >
+                        <img
+                          src={imageUrl(fc.card)}
+                          alt={fc.card.name}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                          onError={(e) => {
+                            e.currentTarget.src = CARD_BACK_URL;
+                          }}
+                        />
+                      </button>
+                    );
+                  })
                 )}
               </div>
             ) : null}
@@ -619,31 +726,114 @@ export function TestTab({
         </div>
       </div>
 
-      {/* ── Right sidebar ── */}
+      {/* ── Right sidebar: preview + library controls ── */}
       <aside
-        className="flex shrink-0 flex-col gap-2 border-l border-border bg-muted/40 p-2"
+        className="flex shrink-0 flex-col border-l border-border bg-muted/40"
         style={{ width: SIDEBAR_W }}
       >
-        <button type="button" className={sidebarBtn} onClick={restartGame} disabled={showEmpty}>
-          Restart
-        </button>
-        <button type="button" className={sidebarBtn} onClick={shuffleLibrary} disabled={showEmpty}>
-          Shuffle
-        </button>
-        <button
-          type="button"
-          className={sidebarBtn}
-          onClick={() => setLibraryModalOpen(true)}
-          disabled={showEmpty}
+        <div
+          className="shrink-0 border-b border-border p-2"
+          aria-live="polite"
         >
-          View Library
-        </button>
-        <button type="button" className={sidebarBtn} onClick={drawCard} disabled={showEmpty || !library.length}>
-          Draw
-        </button>
-        <button type="button" className={sidebarBtnPrimary} onClick={nextTurn} disabled={showEmpty}>
-          Next Turn
-        </button>
+          {hoveredCard ? (
+            <div className="space-y-2">
+              <img
+                src={previewImageUrl(hoveredCard)}
+                alt={hoveredCard.name}
+                className="mx-auto h-auto max-h-[min(320px,38vh)] w-auto rounded-md border object-contain"
+                draggable={false}
+                onError={(e) => {
+                  e.currentTarget.src = CARD_BACK_URL;
+                }}
+              />
+              <div className="text-sm font-medium leading-tight">{hoveredCard.name}</div>
+              <div className="text-xs text-muted-foreground">{hoveredCard.type_line}</div>
+            </div>
+          ) : (
+            <div className="flex min-h-[200px] items-center justify-center px-2 text-center text-xs text-muted-foreground">
+              Hover a card to preview it.
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Library ({library.length})
+            </p>
+            <Input
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+              placeholder="Search library…"
+              className="h-8 text-xs"
+            />
+            <div className="flex gap-1">
+              <Input
+                type="number"
+                min={1}
+                max={99}
+                value={drawCount}
+                onChange={(e) => setDrawCount(e.target.value)}
+                className="h-8 w-16 text-xs tabular-nums"
+                aria-label="Cards to draw"
+              />
+              <button
+                type="button"
+                className={`${sidebarBtn} flex-1`}
+                onClick={() => drawCards(Number(drawCount) || 1)}
+                disabled={showEmpty || !library.length}
+              >
+                Draw
+              </button>
+            </div>
+            <button type="button" className={sidebarBtn} onClick={shuffleLibrary} disabled={showEmpty}>
+              Shuffle
+            </button>
+            <button
+              type="button"
+              className={sidebarBtn}
+              onClick={openLibraryModal}
+              disabled={showEmpty}
+            >
+              View Library
+            </button>
+          </div>
+
+          {librarySearch.trim() ? (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border/60 bg-background/50 p-1">
+              {filteredLibrary.length === 0 ? (
+                <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>
+              ) : (
+                filteredLibrary.slice(0, 12).map(({ card, index }) => (
+                  <button
+                    key={`${card.id}-${index}`}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted"
+                    onMouseEnter={() => setHoveredCard(card)}
+                    onClick={() => drawLibraryIndexToHand(index)}
+                  >
+                    <img
+                      src={imageUrl(card)}
+                      alt=""
+                      className="h-8 w-6 shrink-0 rounded object-cover"
+                      draggable={false}
+                    />
+                    <span className="truncate">{card.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+
+          <div className="mt-auto space-y-2 pt-2">
+            <button type="button" className={sidebarBtn} onClick={restartGame} disabled={showEmpty}>
+              Restart
+            </button>
+            <button type="button" className={sidebarBtnPrimary} onClick={nextTurn} disabled={showEmpty}>
+              Next Turn
+            </button>
+          </div>
+        </div>
       </aside>
 
       {contextMenu ? (
@@ -672,6 +862,20 @@ export function TestTab({
                 label="Move to Exile"
                 onClick={() => {
                   moveHandToExile(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Return to top of library"
+                onClick={() => {
+                  returnHandToLibraryTop(contextMenu.uid);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="Return to bottom of library"
+                onClick={() => {
+                  returnHandToLibraryBottom(contextMenu.uid);
                   setContextMenu(null);
                 }}
               />
@@ -710,10 +914,10 @@ export function TestTab({
           onClick={() => setLibraryModalOpen(false)}
         >
           <div
-            className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-border bg-background shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-lg border border-border bg-background shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
               <h3 className="text-sm font-semibold">Library ({library.length} cards)</h3>
               <button
                 type="button"
@@ -723,20 +927,124 @@ export function TestTab({
                 ✕
               </button>
             </div>
-            <ol className="flex-1 overflow-y-auto px-4 py-3 text-sm">
-              {library.length === 0 ? (
-                <li className="text-muted-foreground">Library is empty.</li>
-              ) : (
-                library.map((card, i) => (
-                  <li
-                    key={`${card.id}-${i}`}
-                    className="border-b border-border/50 py-1.5 text-foreground"
-                  >
-                    {i + 1}. {card.name}
-                  </li>
-                ))
-              )}
-            </ol>
+
+            <div className="border-b border-border px-4 py-3">
+              <Input
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+                placeholder="Search by card name…"
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
+              <div
+                className="min-h-0 flex-1 overflow-y-auto pr-1"
+                onMouseLeave={() => {
+                  if (library.length > 0 && libraryPreviewIndex === null) {
+                    setLibraryPreviewIndex(0);
+                  }
+                }}
+              >
+                {filteredLibrary.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No cards found.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {filteredLibrary.map(({ card, index }) => {
+                      const isPreviewed = libraryPreviewIndex === index;
+                      return (
+                        <li key={`${card.id}-${index}`}>
+                          <button
+                            type="button"
+                            className={`flex w-full items-center gap-3 rounded-md border px-2 py-1.5 text-left text-sm transition ${
+                              isPreviewed
+                                ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                                : "border-transparent hover:bg-muted/60"
+                            }`}
+                            onClick={() => drawLibraryIndexToHand(index)}
+                            onMouseEnter={() => {
+                              setLibraryPreviewIndex(index);
+                              setHoveredCard(card);
+                            }}
+                            onFocus={() => {
+                              setLibraryPreviewIndex(index);
+                              setHoveredCard(card);
+                            }}
+                          >
+                            <img
+                              src={imageUrl(card)}
+                              alt={card.name}
+                              className="h-12 w-9 shrink-0 rounded object-cover"
+                              draggable={false}
+                              onError={(e) => {
+                                e.currentTarget.src = CARD_BACK_URL;
+                              }}
+                            />
+                            <span className="min-w-0 flex-1 truncate">
+                              {index + 1}. {card.name}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="flex w-52 shrink-0 flex-col gap-2 border-l border-border/60 pl-4">
+                <button type="button" className={sidebarBtn} onClick={shuffleLibrary}>
+                  Shuffle library
+                </button>
+
+                {libraryPreviewCard && libraryPreviewIndex !== null ? (
+                  <>
+                    <img
+                      src={previewImageUrl(libraryPreviewCard)}
+                      alt={libraryPreviewCard.name}
+                      className="mx-auto w-full max-w-[180px] rounded-md border object-contain shadow-md"
+                      style={{ aspectRatio: HAND_CARD_ASPECT }}
+                      draggable={false}
+                      onError={(e) => {
+                        e.currentTarget.src = CARD_BACK_URL;
+                      }}
+                    />
+                    <div className="space-y-0.5 text-center">
+                      <div className="text-sm font-medium leading-tight">
+                        {libraryPreviewCard.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {libraryPreviewCard.type_line}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={sidebarBtnPrimary}
+                      onClick={() => drawLibraryIndexToHand(libraryPreviewIndex)}
+                    >
+                      Draw to hand
+                    </button>
+                    <button
+                      type="button"
+                      className={sidebarBtn}
+                      onClick={() => moveLibraryIndexToTop(libraryPreviewIndex)}
+                    >
+                      Put on top
+                    </button>
+                    <button
+                      type="button"
+                      className={sidebarBtn}
+                      onClick={() => moveLibraryIndexToBottom(libraryPreviewIndex)}
+                    >
+                      Put on bottom
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">
+                    Hover a card in the list to preview it. Click a card to draw it.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
