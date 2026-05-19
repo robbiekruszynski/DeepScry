@@ -413,7 +413,7 @@ const TUTOR_STAPLES = new Set([
   "worldly tutor",
 ]);
 
-function isTutor(card: ScryfallCard) {
+export function isTutor(card: ScryfallCard) {
   if (TUTOR_STAPLES.has(card.name.toLowerCase())) return true;
   const t = (card.oracle_text ?? "").toLowerCase();
   return (
@@ -423,6 +423,44 @@ function isTutor(card: ScryfallCard) {
       t.includes("reveal it") ||
       t.includes("onto the battlefield"))
   );
+}
+
+const BOARD_WIPE_STAPLES = new Set([
+  "austere command",
+  "blasphemous act",
+  "cyclonic rift",
+  "damnation",
+  "farewell",
+  "merciless eviction",
+  "toxic deluge",
+  "wrath of god",
+]);
+
+export function isBoardWipe(card: ScryfallCard) {
+  if (isLand(card)) return false;
+  const name = card.name.toLowerCase();
+  if (BOARD_WIPE_STAPLES.has(name)) return true;
+  const t = (card.oracle_text ?? "").toLowerCase();
+
+  const massCreatures =
+    /\b(destroy|exile|sacrifice) all creatures\b/.test(t) ||
+    (t.includes("all creatures") &&
+      (t.includes("destroy") ||
+        t.includes("exile") ||
+        /gets? -\d+\/-\d+/.test(t) ||
+        t.includes("deals") && t.includes("damage"))) ||
+    (t.includes("each creature") &&
+      (t.includes("destroy") || (t.includes("deals") && t.includes("damage"))));
+
+  const massPermanents =
+    /\b(destroy|exile) all (artifacts|enchantments|permanents|nonland permanents)\b/.test(
+      t
+    ) ||
+    t.includes("return all") && t.includes("nonland permanents") ||
+    t.includes("sacrifice all artifacts") ||
+    t.includes("sacrifice all enchantments");
+
+  return massCreatures || massPermanents;
 }
 
 function isFastMana(card: ScryfallCard) {

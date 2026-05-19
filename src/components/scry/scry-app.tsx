@@ -5,6 +5,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { OrbHero } from "@/components/OrbHero";
 import { CurveTab } from "@/components/scry/curve-tab";
 import { HandTab } from "@/components/scry/hand-tab";
+import { TestTab } from "@/components/scry/test-tab";
 import { ImportTab } from "@/components/scry/import-tab";
 import { OverviewTab } from "@/components/scry/overview-tab";
 import { ProbabilitiesTab } from "@/components/scry/probabilities-tab";
@@ -13,9 +14,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
-type TabKey = "overview" | "hand" | "curve" | "probabilities" | "import";
+type TabKey = "overview" | "hand" | "test" | "curve" | "probabilities" | "import";
+
+function SplashPlaceholder() {
+  return <div className="fixed inset-0 bg-[#070412]" aria-hidden />;
+}
 
 export function ScryApp() {
+  const [mounted, setMounted] = React.useState(false);
   const [hasEntered, setHasEntered] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
   const [deck, setDeck] = React.useState<Deck | null>(null);
@@ -24,6 +30,10 @@ export function ScryApp() {
   const [commanderName, setCommanderName] = React.useState("");
   const [archetype, setArchetype] = React.useState<DeckArchetype>("midrange");
   const [importDraftLoaded, setImportDraftLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     if (!deck) {
@@ -99,13 +109,8 @@ export function ScryApp() {
       setTab("overview");
     };
 
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#070412]">
-        <div className="w-full">
-          <OrbHero onEnter={enterApp} />
-        </div>
-      </div>
-    );
+    if (!mounted) return <SplashPlaceholder />;
+    return <OrbHero onEnter={enterApp} />;
   }
 
   return (
@@ -137,11 +142,12 @@ export function ScryApp() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-          <div className="flex flex-col gap-4">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="w-full">
+          <div className="flex w-full flex-col gap-4">
             <TabsList className="w-full justify-start">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="hand">Hand</TabsTrigger>
+              <TabsTrigger value="test">Test</TabsTrigger>
               <TabsTrigger value="curve">Curve</TabsTrigger>
               <TabsTrigger value="probabilities">Probabilities</TabsTrigger>
               <TabsTrigger value="import">Import</TabsTrigger>
@@ -149,7 +155,7 @@ export function ScryApp() {
 
             <Separator />
 
-            <TabsContent value="overview" className="m-0">
+            <TabsContent value="overview" className="m-0 w-full">
               <OverviewTab
                 deck={deck}
                 tagMap={tagMap}
@@ -160,25 +166,16 @@ export function ScryApp() {
               />
             </TabsContent>
 
-            <TabsContent value="hand" className="m-0">
-              {deck ? (
-                <HandTab deck={deck} tagMap={tagMap} />
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Test play & opening hands</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
-                    <p className="max-w-md text-sm text-muted-foreground">
-                      Load a deck to draw opening hands, get keep/mulligan advice, and play out
-                      turns on a virtual battlefield.
-                    </p>
-                    <Button size="lg" onClick={() => setTab("import")}>
-                      Import a deck
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+            <TabsContent value="hand" className="m-0 w-full">
+              <HandTab
+                deck={deck}
+                tagMap={tagMap}
+                onGoToImport={() => setTab("import")}
+              />
+            </TabsContent>
+
+            <TabsContent value="test" className="m-0 w-full">
+              <TestTab deck={deck} onGoToImport={() => setTab("import")} />
             </TabsContent>
 
             <TabsContent value="curve" className="m-0">

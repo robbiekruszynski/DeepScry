@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Intentionally minimal; app behavior configured via code.
+  transpilePackages: ["three"],
 };
 
 module.exports = nextConfig;
