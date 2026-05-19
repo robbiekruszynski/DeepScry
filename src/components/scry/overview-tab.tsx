@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { BarChart2, DollarSign, Hand, Percent } from "lucide-react";
 
 import type { CardTagMap, Deck } from "@/lib/deck";
 import { BudgetTuner } from "@/components/scry/budget-tuner";
@@ -20,7 +21,13 @@ import {
   isSorcery,
 } from "@/lib/stats";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -57,18 +64,76 @@ function StatCard({
   );
 }
 
+const LANDING_FEATURES = [
+  {
+    icon: BarChart2,
+    title: "Mana Curve",
+    description:
+      "Visualize your CMC distribution and spot dead turns before they happen.",
+  },
+  {
+    icon: Hand,
+    title: "Opening Hand Sim",
+    description:
+      "Simulate thousands of opening hands and see your real keep rate.",
+  },
+  {
+    icon: Percent,
+    title: "Probability Engine",
+    description:
+      "Calculate the odds of drawing any card or combination by any turn.",
+  },
+  {
+    icon: DollarSign,
+    title: "Budget Analyzer",
+    description:
+      "See your deck's current value and get ranked upgrade suggestions with live pricing.",
+  },
+] as const;
+
 function OverviewLanding({ onImport }: { onImport: () => void }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Welcome to DeepScry</CardTitle>
+      <CardHeader className="space-y-3">
+        <div className="space-y-1">
+          <CardTitle className="text-xl">Welcome to DeepScry</CardTitle>
+          <CardDescription className="text-sm leading-relaxed">
+            The fastest way to analyze, test, and upgrade your Commander deck.
+          </CardDescription>
+        </div>
+        <Button size="lg" onClick={onImport}>
+          Go to Import →
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-4 text-sm text-muted-foreground">
-        <p>
-          Paste a decklist from Moxfield, Archidekt, or EDHREC using the Import tab to get
-          started.
-        </p>
-        <Button onClick={onImport}>Go to Import →</Button>
+      <CardContent className="space-y-8 text-sm">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {LANDING_FEATURES.map(({ icon: Icon, title, description }) => (
+            <div
+              key={title}
+              className="rounded-lg border border-border/80 bg-muted/20 p-3"
+            >
+              <Icon className="mb-2 h-5 w-5 text-primary" aria-hidden />
+              <div className="font-medium text-foreground">{title}</div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {description}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-medium text-foreground">How to import your deck</h3>
+          <ol className="list-decimal space-y-2 pl-5 text-muted-foreground">
+            <li>Open your deck on Moxfield, Archidekt, or EDHREC</li>
+            <li>
+              Export or copy as plain text (one card per line, e.g. &quot;1 Sol Ring&quot;)
+            </li>
+            <li>Paste into the Import tab and click Import</li>
+          </ol>
+          <p className="text-xs text-muted-foreground">
+            Moxfield users: use Copy → Plain Text for best results.
+          </p>
+        </section>
       </CardContent>
     </Card>
   );

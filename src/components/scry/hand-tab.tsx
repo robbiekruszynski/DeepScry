@@ -8,6 +8,7 @@ import { expandDeck } from "@/lib/deck";
 import { mulliganAdvice } from "@/lib/commander-tools";
 import { isLand } from "@/lib/stats";
 import type { ScryfallCard } from "@/lib/scryfall";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
@@ -20,6 +21,8 @@ const BF_CARD_H = 100;
 const HAND_CARD_W = 100;
 const HAND_CARD_H = 140;
 const TOP_BAR_H = 40;
+const OPENING_CARD_W = 72;
+const OPENING_CARD_H = 100;
 const BOTTOM_BAR_H = 160;
 const SIDEBAR_W = 120;
 const DEFAULT_BF_X = 20;
@@ -238,35 +241,58 @@ export function HandTab({
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState>(null);
   const [libraryModalOpen, setLibraryModalOpen] = React.useState(false);
   const [handExpanded, setHandExpanded] = React.useState(true);
+  const [openingHandSize, setOpeningHandSize] = React.useState(7);
+
+  const dealOpeningHand = React.useCallback(
+    (size: number) => {
+      const shuffled = shuffle(fullDeck);
+      const count = Math.min(size, shuffled.length);
+      setLibrary(shuffled.slice(count));
+      setHand(
+        shuffled.slice(0, count).map((card) => ({
+          card,
+          uid: nextUid(),
+        }))
+      );
+      setBattlefield([]);
+      setGraveyard([]);
+      setExile([]);
+      setTurn(1);
+      setLife(40);
+      setContextMenu(null);
+    },
+    [fullDeck]
+  );
 
   const restartGame = React.useCallback(() => {
-    const shuffled = shuffle(fullDeck);
-    const opening = Math.min(7, shuffled.length);
-    setLibrary(shuffled.slice(opening));
-    setHand(
-      shuffled.slice(0, opening).map((card) => ({
-        card,
-        uid: nextUid(),
-      }))
-    );
-    setBattlefield([]);
-    setGraveyard([]);
-    setExile([]);
-    setTurn(1);
-    setLife(40);
-    setContextMenu(null);
-  }, [fullDeck]);
+    setOpeningHandSize(7);
+    dealOpeningHand(7);
+  }, [dealOpeningHand]);
+
+  const newOpeningHand = React.useCallback(() => {
+    setOpeningHandSize(7);
+    dealOpeningHand(7);
+  }, [dealOpeningHand]);
+
+  const mulliganOpening = React.useCallback(() => {
+    const next = Math.max(0, openingHandSize - 1);
+    setOpeningHandSize(next);
+    dealOpeningHand(next);
+  }, [openingHandSize, dealOpeningHand]);
 
   React.useEffect(() => {
     if (fullDeck.length === 0) return;
     restartGame();
   }, [fullDeck, restartGame]);
 
-  React.useMemo(() => {
+  const handAdvice = React.useMemo(() => {
+    if (!deck || hand.length === 0) return null;
     const cards = hand.map((h) => h.card);
-    verdictForHand(cards);
-    if (deck) mulliganAdvice(cards, deck.archetype ?? "midrange", tagMap);
-    return null;
+    return {
+      baseline: verdictForHand(cards),
+      advice: mulliganAdvice(cards, deck.archetype ?? "midrange", tagMap),
+      landCount: cards.filter(isLand).length,
+    };
   }, [hand, deck, tagMap]);
 
   const allVisibleCards = React.useMemo(() => {
@@ -509,10 +535,98 @@ export function HandTab({
           </Button>
         </div>
 
-        {/* ── Battlefield (~75% of remaining height) ── */}
+        {/* ── Opening hand + keep/mulligan (above field test) ── */}
+        {!showEmpty && handAdvice ? (
+          <div className="shrink-0 space-y-2 border-b border-border bg-muted/30 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Opening hand
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={newOpeningHand}
+              >
+                New hand
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={mulliganOpening}
+                disabled={openingHandSize <= 0}
+              >
+                Mulligan → {Math.max(0, openingHandSize - 1)}
+              </Button>
+              <Badge
+                variant={
+                  handAdvice.advice.verdict === "Keep"
+                    ? "default"
+                    : handAdvice.advice.verdict === "Mulligan"
+                      ? "destructive"
+                      : "secondary"
+                }
+              >
+                {handAdvice.advice.verdict}
+              </Badge>
+              <Badge variant="outline">Lands: {handAdvice.landCount}</Badge>
+              <Badge variant="outline">Quick read: {handAdvice.baseline}</Badge>
+              {deck?.archetype ? (
+                <span className="text-xs capitalize text-muted-foreground">{deck.archetype}</span>
+              ) : null}
+            </div>
+
+            <div className="overflow-x-auto pb-1">
+              <div className="flex min-w-max items-end px-1">
+                {hand.map((fc, idx) => {
+                  const center = (hand.length - 1) / 2;
+                  const offsetFromCenter = idx - center;
+                  const angle = offsetFromCenter * 3;
+                  const lift = Math.abs(offsetFromCenter) * 2;
+                  return (
+                    <div
+                      key={fc.uid}
+                      className="relative shrink-0"
+                      style={{
+                        marginLeft: idx === 0 ? 0 : -28,
+                        transform: `translateY(${lift}px) rotate(${angle}deg)`,
+                      }}
+                    >
+                      <div
+                        className="overflow-hidden rounded-md border border-border bg-card shadow-md"
+                        style={{ width: OPENING_CARD_W, height: OPENING_CARD_H }}
+                      >
+                        <img
+                          src={imageUrl(fc.card)}
+                          alt={fc.card.name}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                          onError={(e) => {
+                            e.currentTarget.src = CARD_BACK_URL;
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <ul className="list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+              {handAdvice.advice.reasons.map((reason, i) => (
+                <li key={`${reason}-${i}`}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* ── Battlefield (field test) ── */}
         <div
           ref={battlefieldRef}
-          className="relative min-h-0 flex-[3] overflow-hidden bg-muted/20"
+          className="relative min-h-0 flex-1 overflow-hidden bg-muted/20"
           onPointerMove={handleBattlefieldPointerMove}
           onPointerUp={handleBattlefieldPointerUp}
           onPointerLeave={handleBattlefieldPointerUp}
