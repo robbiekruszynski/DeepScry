@@ -43,15 +43,16 @@ const HAND_HOVER_SCALE = 1.15;
 const HAND_HOVER_PART_PX = 12;
 const HAND_FAN_ROTATE_DEG = 1.25;
 const HAND_HOVER_TRANSITION = "transform 150ms ease-out";
-/** Room above resting cards for hover lift + bottom-anchored scale (no extra bottom headroom). */
-const HAND_HOVER_HEADROOM =
-  HAND_HOVER_RISE_PX + Math.ceil(HAND_CARD_H * (HAND_HOVER_SCALE - 1));
-/** Shadow bleed below planted card bottoms. */
-const HAND_SHADOW_PAD = 8;
-const HAND_ROW_HEIGHT = HAND_CARD_H + HAND_HOVER_HEADROOM + HAND_SHADOW_PAD;
+/** Fixed hand strip: scaled card height + lift + shadow margin — never shared with battlefield. */
+const HAND_SHADOW_MARGIN = 16;
+const HAND_ZONE_HEIGHT =
+  Math.ceil(HAND_CARD_H * HAND_HOVER_SCALE) + HAND_HOVER_RISE_PX + HAND_SHADOW_MARGIN;
+/** Padding inside the horizontal scroll box so raised cards stay fully visible (overflow-x clips Y). */
+const HAND_SCROLL_TOP_PAD =
+  HAND_ZONE_HEIGHT - HAND_CARD_H - HAND_SHADOW_MARGIN;
 const HAND_DRAW_ANIM_MS = 200;
 const TOP_BAR_H = 40;
-const BOTTOM_BAR_H = 176;
+const ZONE_STRIP_H = 108;
 const DEFAULT_BF_X = 20;
 const DEFAULT_BF_Y = 24;
 const HOVER_SCALE_DELAY_MS = 300;
@@ -310,7 +311,7 @@ function handCardTransform(
       parts.push(`translateX(${HAND_HOVER_PART_PX}px)`);
     }
     if (index === hoveredIndex) {
-      parts.push(`scale(${HAND_HOVER_SCALE})`, `translateY(${-HAND_HOVER_RISE_PX}px)`);
+      parts.push(`translateY(${-HAND_HOVER_RISE_PX}px)`, `scale(${HAND_HOVER_SCALE})`);
     } else {
       const rot = (index - center) * HAND_FAN_ROTATE_DEG;
       parts.push(`rotate(${rot}deg)`);
@@ -333,6 +334,21 @@ function handCardZIndex(
   return 10 + index;
 }
 
+function usePreview() {
+  const [previewCard, setPreviewCard] = React.useState<ScryfallCard | null>(null);
+  const [previewUid, setPreviewUid] = React.useState<string | null>(null);
+
+  const setPreview = React.useCallback(
+    (card: ScryfallCard | null, uid: string | null = null) => {
+      setPreviewCard(card);
+      setPreviewUid(uid);
+    },
+    []
+  );
+
+  return { previewCard, previewUid, setPreview };
+}
+
 const FannedHandRow = React.memo(function FannedHandRow({
   cards,
   handSpread,
@@ -340,6 +356,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
   activeDragId,
   imageUrl,
   onContextMenu,
+  onPreview,
 }: {
   cards: FieldCard[];
   handSpread: boolean;
@@ -347,6 +364,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
   activeDragId: string | null;
   imageUrl: (card: ScryfallCard) => string;
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
+  onPreview: (card: ScryfallCard | null, uid?: string | null) => void;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const fanInnerRef = React.useRef<HTMLDivElement>(null);
@@ -383,13 +401,16 @@ const FannedHandRow = React.memo(function FannedHandRow({
       );
       if (idx === null || idx === hoveredIndex) return;
       setHoveredIndex(idx);
+      const fc = cards[idx];
+      if (fc) onPreview(fc.card, fc.uid);
     },
-    [cards, hoveredIndex]
+    [cards, hoveredIndex, onPreview]
   );
 
   const handleFanPointerLeave = React.useCallback(() => {
     setHoveredIndex(null);
-  }, []);
+    onPreview(null, null);
+  }, [onPreview]);
 
   React.useEffect(() => {
     updateFades();
@@ -412,7 +433,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
     return (
       <div
         className="flex items-center justify-center text-xs text-muted-foreground/60"
-        style={{ height: HAND_ROW_HEIGHT }}
+        style={{ height: HAND_ZONE_HEIGHT }}
       >
         Drag cards to play
       </div>
@@ -420,10 +441,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
   }
 
   return (
-    <div
-      className="relative box-border overflow-visible pb-2"
-      style={{ height: HAND_ROW_HEIGHT }}
-    >
+    <div className="relative shrink-0 overflow-visible" style={{ height: HAND_ZONE_HEIGHT }}>
       {fadeLeft ? (
         <div
           className="pointer-events-none absolute left-0 top-0 z-40 h-full w-8 bg-gradient-to-r from-muted/90 to-transparent"
@@ -438,15 +456,17 @@ const FannedHandRow = React.memo(function FannedHandRow({
       ) : null}
       <div
         ref={scrollRef}
-        className="h-full overflow-x-auto overflow-y-visible [scrollbar-width:thin]"
+        className="h-full overflow-x-auto overflow-y-hidden [scrollbar-width:thin]"
         onScroll={updateFades}
       >
         <div
           ref={fanInnerRef}
-          className="relative mx-auto overflow-visible"
+          className="relative mx-auto box-border"
           style={{
             width: Math.max(trackWidth, 1),
-            height: HAND_ROW_HEIGHT - HAND_SHADOW_PAD,
+            height: HAND_ZONE_HEIGHT,
+            paddingTop: HAND_SCROLL_TOP_PAD,
+            paddingBottom: HAND_SHADOW_MARGIN,
           }}
           onMouseMove={handleFanPointerMove}
           onMouseLeave={handleFanPointerLeave}
@@ -465,11 +485,12 @@ const FannedHandRow = React.memo(function FannedHandRow({
                 className="absolute overflow-visible"
                 style={{
                   left: slotLeft,
-                  bottom: 0,
+                  bottom: HAND_SHADOW_MARGIN,
                   width: HAND_CARD_W,
                   height: HAND_CARD_H,
                   zIndex,
                 }}
+                onPointerEnter={() => onPreview(fc.card, fc.uid)}
               >
                 <HandCardInner
                   fc={fc}
@@ -479,6 +500,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
                   isEntering={isEntering}
                   transform={transform}
                   onContextMenu={onContextMenu}
+                  onPreview={() => onPreview(fc.card, fc.uid)}
                 />
               </div>
             );
@@ -497,6 +519,7 @@ const HandCardInner = React.memo(function HandCardInner({
   isEntering,
   transform,
   onContextMenu,
+  onPreview,
 }: {
   fc: FieldCard;
   imageSrc: string;
@@ -505,6 +528,7 @@ const HandCardInner = React.memo(function HandCardInner({
   isEntering: boolean;
   transform: string;
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
+  onPreview: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform: dragTransform } = useDraggable({
     id: `hand-${fc.uid}`,
@@ -544,6 +568,7 @@ const HandCardInner = React.memo(function HandCardInner({
         longPress.onPointerDown(e);
         listeners?.onPointerDown?.(e);
       }}
+      onPointerEnter={onPreview}
       onPointerUp={longPress.onPointerUp}
       onPointerLeave={longPress.onPointerLeave}
       onPointerCancel={longPress.onPointerCancel}
@@ -571,23 +596,23 @@ function BattlefieldCardView({
   fc,
   imageUrl,
   isDragging,
-  hoverUid,
+  previewUid,
   onTap,
-  onHover,
+  onPreview,
   onContextMenu,
 }: {
   fc: BattlefieldCard;
   imageUrl: (card: ScryfallCard) => string;
   isDragging: boolean;
-  hoverUid: string | null;
+  previewUid: string | null;
   onTap: (uid: string) => void;
-  onHover: (uid: string | null, card: ScryfallCard | null) => void;
+  onPreview: (card: ScryfallCard | null, uid?: string | null) => void;
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
 }) {
   const { card, tapped } = fc;
   const stats = card as CardWithStats;
   const showPt = isCreature(card) && (stats.power != null || stats.toughness != null);
-  const scaled = useDelayedScale(fc.uid, hoverUid);
+  const scaled = useDelayedScale(fc.uid, previewUid);
   const longPress = useLongPress((e) => onContextMenu(e as React.PointerEvent, fc.uid));
 
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -621,7 +646,7 @@ function BattlefieldCardView({
       onPointerUp={longPress.onPointerUp}
       onPointerLeave={(e) => {
         longPress.onPointerLeave();
-        onHover(null, null);
+        onPreview(null, null);
       }}
       onPointerCancel={longPress.onPointerCancel}
       onClick={(e) => {
@@ -629,8 +654,7 @@ function BattlefieldCardView({
         e.stopPropagation();
         onTap(fc.uid);
       }}
-      onMouseEnter={() => onHover(fc.uid, fc.card)}
-      onFocus={() => onHover(fc.uid, fc.card)}
+      onPointerEnter={() => onPreview(fc.card, fc.uid)}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e, fc.uid);
@@ -680,7 +704,7 @@ function DraggableZoneCard({
   alt,
   faceDown = false,
   className = "",
-  onHover,
+  onPreview,
   onContextMenu,
 }: {
   id: string;
@@ -689,7 +713,7 @@ function DraggableZoneCard({
   alt: string;
   faceDown?: boolean;
   className?: string;
-  onHover?: (card: ScryfallCard | null) => void;
+  onPreview?: (card: ScryfallCard | null, uid?: string | null) => void;
   onContextMenu?: (e: React.MouseEvent | React.PointerEvent) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -714,10 +738,12 @@ function DraggableZoneCard({
         listeners?.onPointerDown?.(e);
       }}
       onPointerUp={longPress.onPointerUp}
-      onPointerLeave={longPress.onPointerLeave}
+      onPointerLeave={(e) => {
+        longPress.onPointerLeave();
+        onPreview?.(null, null);
+      }}
       onPointerCancel={longPress.onPointerCancel}
-      onMouseEnter={() => onHover?.(data.card)}
-      onMouseLeave={() => onHover?.(null)}
+      onPointerEnter={() => onPreview?.(data.card, data.uid)}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu?.(e);
@@ -782,8 +808,7 @@ export function TestTab({
   const [librarySearch, setLibrarySearch] = React.useState("");
   const [libraryPreviewIndex, setLibraryPreviewIndex] = React.useState<number | null>(null);
   const [drawCount, setDrawCount] = React.useState("1");
-  const [hoveredCard, setHoveredCard] = React.useState<ScryfallCard | null>(null);
-  const [hoverUid, setHoverUid] = React.useState<string | null>(null);
+  const { previewCard, previewUid, setPreview } = usePreview();
   const [handExpanded, setHandExpanded] = React.useState(true);
   const [handSpread, setHandSpread] = React.useState(false);
   const [enteringHandUids, setEnteringHandUids] = React.useState<Set<string>>(
@@ -874,10 +899,16 @@ export function TestTab({
     return card.image_url_large || card.image_url || imageUrl(card);
   };
 
-  const setHover = React.useCallback((uid: string | null, card: ScryfallCard | null) => {
-    setHoverUid(uid);
-    setHoveredCard(card);
-  }, []);
+  const battlefieldExtent = React.useMemo(() => {
+    let height = DEFAULT_BF_Y + BF_CARD_H + 48;
+    let width = DEFAULT_BF_X + BF_CARD_W * 11;
+    for (const fc of battlefield) {
+      const { w, h } = battlefieldCardSize(fc.tapped);
+      height = Math.max(height, fc.y + h + 48);
+      width = Math.max(width, fc.x + w + 48);
+    }
+    return { width, height };
+  }, [battlefield]);
 
   const markHandEntering = React.useCallback((uids: string[]) => {
     if (!uids.length) return;
@@ -1369,7 +1400,7 @@ export function TestTab({
         className="flex min-h-[520px] w-full overflow-hidden rounded-lg border border-border bg-background text-foreground xl:min-h-[calc(100dvh-10rem)]"
         style={{ height: "calc(100dvh - 10rem)" }}
       >
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div
             className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3"
             style={{ height: TOP_BAR_H }}
@@ -1413,9 +1444,17 @@ export function TestTab({
 
           <DroppableZone
             id={DND_ZONE.BATTLEFIELD}
-            className="relative min-h-0 flex-1 overflow-hidden bg-muted/20"
+            className="relative min-h-0 flex-1 overflow-auto bg-muted/20"
           >
-            <div ref={battlefieldRef} className="absolute inset-0">
+            <div
+              ref={battlefieldRef}
+              className="relative"
+              style={{
+                minHeight: "100%",
+                width: battlefieldExtent.width,
+                height: Math.max(battlefieldExtent.height, 320),
+              }}
+            >
               <div className="pointer-events-none absolute left-3 top-2 z-20 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                 Battlefield
                 <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
@@ -1432,49 +1471,49 @@ export function TestTab({
                   fc={fc}
                   imageUrl={imageUrl}
                   isDragging={activeDragId === `bf-${fc.uid}`}
-                  hoverUid={hoverUid}
+                  previewUid={previewUid}
                   onTap={toggleTap}
-                  onHover={setHover}
+                  onPreview={setPreview}
                   onContextMenu={(e, uid) => openContextMenu(e, "battlefield", uid)}
                 />
               ))}
             </div>
           </DroppableZone>
 
-          <div
-            className="flex shrink-0 border-t border-border bg-muted/40"
-            style={{ height: BOTTOM_BAR_H }}
+          <DroppableZone
+            id={DND_ZONE.HAND}
+            className="flex shrink-0 flex-col overflow-visible border-t border-border bg-muted/40 px-3 pt-1.5"
           >
-            <DroppableZone
-              id={DND_ZONE.HAND}
-              className="flex min-w-0 flex-1 flex-col overflow-visible border-r border-border px-3 py-1.5"
+            <button
+              type="button"
+              className="mb-1 flex shrink-0 items-center gap-1 text-left text-xs font-semibold text-muted-foreground"
+              onClick={() => setHandExpanded((v) => !v)}
             >
-              <button
-                type="button"
-                className="mb-1 flex shrink-0 items-center gap-1 text-left text-xs font-semibold text-muted-foreground"
-                onClick={() => setHandExpanded((v) => !v)}
-              >
-                Hand ({hand.length})
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${handExpanded ? "" : "-rotate-90"}`}
-                  aria-hidden
-                />
-              </button>
-              {handExpanded ? (
-                <FannedHandRow
-                  cards={hand}
-                  handSpread={handSpread}
-                  enteringUids={enteringHandUids}
-                  activeDragId={activeDragId}
-                  imageUrl={imageUrl}
-                  onContextMenu={(e, uid) => openContextMenu(e, "hand", uid)}
-                />
-              ) : (
-                <div style={{ height: HAND_ROW_HEIGHT }} />
-              )}
-            </DroppableZone>
+              Hand ({hand.length})
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${handExpanded ? "" : "-rotate-90"}`}
+                aria-hidden
+              />
+            </button>
+            {handExpanded ? (
+              <FannedHandRow
+                cards={hand}
+                handSpread={handSpread}
+                enteringUids={enteringHandUids}
+                activeDragId={activeDragId}
+                imageUrl={imageUrl}
+                onContextMenu={(e, uid) => openContextMenu(e, "hand", uid)}
+                onPreview={setPreview}
+              />
+            ) : (
+              <div style={{ height: HAND_ZONE_HEIGHT }} />
+            )}
+          </DroppableZone>
 
-            <div className="flex shrink-0 items-center justify-end gap-3 px-3">
+          <div
+            className="flex shrink-0 items-center justify-end gap-3 overflow-visible border-t border-border bg-muted/40 px-3 py-2"
+            style={{ height: ZONE_STRIP_H }}
+          >
               <div className="flex flex-col items-center gap-1">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   Library ({library.length})
@@ -1503,6 +1542,7 @@ export function TestTab({
                       imageSrc={CARD_BACK_URL}
                       alt="Library top"
                       faceDown
+                      onPreview={() => setPreview(null, null)}
                       onContextMenu={(e) => openContextMenu(e, "library", "library-top")}
                     />
                   ) : (
@@ -1545,6 +1585,7 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(topGy.card)}
                       alt={topGy.card.name}
+                      onPreview={setPreview}
                       onContextMenu={(e) => openContextMenu(e, "graveyard", topGy.uid)}
                     />
                   </div>
@@ -1573,6 +1614,7 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(topExile.card)}
                       alt={topExile.card.name}
+                      onPreview={setPreview}
                       onContextMenu={(e) => openContextMenu(e, "exile", topExile.uid)}
                     />
                   </div>
@@ -1601,6 +1643,7 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(commandZone.card)}
                       alt={commandZone.card.name}
+                      onPreview={setPreview}
                       onContextMenu={(e) => openContextMenu(e, "commander", commandZone.uid)}
                     />
                   </div>
@@ -1614,28 +1657,27 @@ export function TestTab({
                 )}
               </DroppableZone>
             </div>
-          </div>
         </div>
 
         <aside className="flex w-64 shrink-0 flex-col border-l border-border bg-muted/40 xl:w-56 2xl:w-52">
           <div className="shrink-0 border-b border-border p-2" aria-live="polite">
-            {hoveredCard ? (
+            {previewCard ? (
               <div className="space-y-2">
                 <img
-                  src={previewImageUrl(hoveredCard)}
-                  alt={hoveredCard.name}
+                  src={previewImageUrl(previewCard)}
+                  alt={previewCard.name}
                   className="mx-auto h-auto max-h-[min(320px,38vh)] w-auto rounded-md border object-contain shadow-md"
                   draggable={false}
                   onError={(e) => {
                     e.currentTarget.src = CARD_BACK_URL;
                   }}
                 />
-                <div className="text-sm font-medium leading-tight">{hoveredCard.name}</div>
-                <div className="text-xs text-muted-foreground">{hoveredCard.type_line}</div>
+                <div className="text-sm font-medium leading-tight">{previewCard.name}</div>
+                <div className="text-xs text-muted-foreground">{previewCard.type_line}</div>
               </div>
             ) : (
               <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-2 text-center text-xs text-muted-foreground">
-                <p>Hover a battlefield card to preview it.</p>
+                <p>Hover any card to preview it.</p>
                 <p className="text-[10px] text-muted-foreground/70">
                   Drag between zones · right-click for actions
                 </p>
@@ -1691,9 +1733,9 @@ export function TestTab({
                       key={`${card.id}-${index}`}
                       type="button"
                       className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted"
-                      onMouseEnter={() => {
+                      onPointerEnter={() => {
                         setLibraryPreviewIndex(index);
-                        setHoveredCard(card);
+                        setPreview(card, null);
                       }}
                       onClick={() => drawLibraryIndexToHand(index)}
                     >
@@ -1757,7 +1799,7 @@ export function TestTab({
             libraryPreviewIndex={libraryPreviewIndex}
             setLibraryPreviewIndex={setLibraryPreviewIndex}
             libraryPreviewCard={libraryPreviewCard}
-            setHoveredCard={setHoveredCard}
+            setPreview={setPreview}
             drawLibraryIndexToHand={drawLibraryIndexToHand}
             shuffleLibrary={shuffleLibrary}
             moveLibraryIndexToTop={moveLibraryIndexToTop}
@@ -1971,7 +2013,7 @@ function LibraryModal({
   libraryPreviewIndex,
   setLibraryPreviewIndex,
   libraryPreviewCard,
-  setHoveredCard,
+  setPreview,
   drawLibraryIndexToHand,
   shuffleLibrary,
   moveLibraryIndexToTop,
@@ -1987,7 +2029,7 @@ function LibraryModal({
   libraryPreviewIndex: number | null;
   setLibraryPreviewIndex: (v: number | null) => void;
   libraryPreviewCard: ScryfallCard | null;
-  setHoveredCard: (c: ScryfallCard | null) => void;
+  setPreview: (card: ScryfallCard | null, uid?: string | null) => void;
   drawLibraryIndexToHand: (index: number) => void;
   shuffleLibrary: () => void;
   moveLibraryIndexToTop: (index: number) => void;
@@ -2043,9 +2085,9 @@ function LibraryModal({
                             : "border-transparent hover:bg-muted/60"
                         }`}
                         onClick={() => drawLibraryIndexToHand(index)}
-                        onMouseEnter={() => {
+                        onPointerEnter={() => {
                           setLibraryPreviewIndex(index);
-                          setHoveredCard(card);
+                          setPreview(card, null);
                         }}
                       >
                         <img

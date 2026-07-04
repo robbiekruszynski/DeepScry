@@ -34,59 +34,83 @@ export function isPlaneswalker(card: ScryfallCard) {
 }
 
 export function isRamp(card: ScryfallCard) {
-  if (isLand(card)) return false;
+  return getRampReasons(card).length > 0;
+}
+
+/** Human-readable ramp signals (mirrors {@link isRamp}). */
+export function getRampReasons(card: ScryfallCard): string[] {
+  if (isLand(card)) return [];
   const text = (card.oracle_text ?? "").toLowerCase();
+  const reasons: string[] = [];
 
-  if (/\badd\b/.test(text) && text.includes("{")) return true;
-
+  if (/\badd\b/.test(text) && text.includes("{")) {
+    reasons.push("adds mana");
+  }
   if (
     text.includes("search your library") &&
     text.includes("land card") &&
     (text.includes("put it onto the battlefield") ||
       text.includes("put that card onto the battlefield"))
   ) {
-    return true;
+    reasons.push("tutor land to battlefield");
+  }
+  if (text.includes("treasure token")) {
+    reasons.push("treasure token");
   }
 
-  if (text.includes("treasure token")) return true;
+  return reasons;
+}
 
-  return false;
+/** Human-readable interaction signals (mirrors {@link isInteraction}). */
+export function getInteractionReasons(card: ScryfallCard): string[] {
+  if (isLand(card)) return [];
+  const name = card.name.toLowerCase();
+  const text = (card.oracle_text ?? "").toLowerCase();
+  const reasons: string[] = [];
+
+  const knownInteraction: Record<string, string> = {
+    "collector ouphe": "stax / artifact hate",
+    "deflecting swat": "redirect",
+    "drannith magistrate": "spell lock",
+    "grand abolisher": "spell lock",
+    "opposition agent": "hand disruption",
+    pyroblast: "counter red",
+    "red elemental blast": "counter red",
+    silence: "spell lock",
+    thoughtseize: "hand disruption",
+    "veil of summer": "protection",
+  };
+
+  if (name in knownInteraction) {
+    reasons.push(knownInteraction[name]!);
+  }
+
+  const patterns: { re: RegExp; reason: string }[] = [
+    { re: /\bcounter target\b/, reason: "counterspell" },
+    { re: /\bchange the target\b/, reason: "redirect" },
+    { re: /\bdestroy target\b/, reason: "destroy target" },
+    { re: /\bexile target\b/, reason: "exile target" },
+    { re: /\bdeals? \d+ damage to target\b/, reason: "damage to target" },
+    { re: /\btarget opponent reveals their hand\b/, reason: "hand disruption" },
+    {
+      re: /\breturn target\b.*\bto (its owner's hand|their hand)\b/,
+      reason: "bounce",
+    },
+    { re: /\bopponents can't\b/, reason: "opponent restriction" },
+    { re: /\byour opponents can't\b/, reason: "opponent restriction" },
+    { re: /\bcan't cast spells\b/, reason: "spell lock" },
+    { re: /\bprevent all damage\b/, reason: "damage prevention" },
+  ];
+
+  for (const { re, reason } of patterns) {
+    if (re.test(text) && !reasons.includes(reason)) reasons.push(reason);
+  }
+
+  return reasons;
 }
 
 export function isInteraction(card: ScryfallCard) {
-  if (isLand(card)) return false;
-  const name = card.name.toLowerCase();
-  const text = (card.oracle_text ?? "").toLowerCase();
-
-  const knownInteraction = [
-    "collector ouphe",
-    "deflecting swat",
-    "drannith magistrate",
-    "grand abolisher",
-    "opposition agent",
-    "pyroblast",
-    "red elemental blast",
-    "silence",
-    "thoughtseize",
-    "veil of summer",
-  ];
-
-  if (knownInteraction.includes(name)) return true;
-
-  const patterns: RegExp[] = [
-    /\bcounter target\b/,
-    /\bchange the target\b/,
-    /\bdestroy target\b/,
-    /\bexile target\b/,
-    /\bdeals? \d+ damage to target\b/,
-    /\btarget opponent reveals their hand\b/,
-    /\breturn target\b.*\bto (its owner's hand|their hand)\b/,
-    /\bopponents can't\b/,
-    /\byour opponents can't\b/,
-    /\bcan't cast spells\b/,
-    /\bprevent all damage\b/,
-  ];
-  return patterns.some((p) => p.test(text));
+  return getInteractionReasons(card).length > 0;
 }
 
 export function isCardDraw(card: ScryfallCard) {

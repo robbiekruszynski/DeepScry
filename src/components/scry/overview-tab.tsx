@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { BarChart2, DollarSign, Hand, Percent } from "lucide-react";
+import { BarChart2, ChevronDown, DollarSign, Hand, Percent, X } from "lucide-react";
 
 import type { CardTagMap, Deck } from "@/lib/deck";
 import { findCommanderEntry, getCommanderDisplayName } from "@/lib/deck";
@@ -15,7 +15,12 @@ import {
   colorIdentityViolations,
 } from "@/lib/commander-tools";
 import {
-  computeDeckStats,
+  buildDeckClassifications,
+  type ClassifiedDeckEntry,
+  type CmcBucket,
+  type OverviewStatId,
+} from "@/lib/deck-classifications";
+import {
   isArtifact,
   isCreature,
   isEnchantment,
@@ -24,6 +29,7 @@ import {
   isSorcery,
 } from "@/lib/stats";
 import { estimateCommanderBracket, type BracketEstimate } from "@/lib/bracket";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -206,29 +212,250 @@ function CommanderArtPanel({
   );
 }
 
-function StatCard({
+function cardThumbUrl(card: ScryfallCard) {
+  return (
+    card.image_url_normal ||
+    card.image_url ||
+    card.image_url_art_crop ||
+    null
+  );
+}
+
+function cardPreviewUrl(card: ScryfallCard) {
+  return card.image_url_large || card.image_url_normal || card.image_url || null;
+}
+
+function StatDrillDownPanel({
+  title,
+  onClose,
+  hoveredCard,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  hoveredCard: ScryfallCard | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="border-primary/25 shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Close category details"
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </Button>
+      </CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="min-h-0 max-h-80 overflow-y-auto pr-1">{children}</div>
+        <div
+          className="rounded-lg border bg-muted/30 p-2 shadow-sm"
+          aria-live="polite"
+        >
+          {hoveredCard && cardPreviewUrl(hoveredCard) ? (
+            <div className="space-y-2">
+              <img
+                src={cardPreviewUrl(hoveredCard)!}
+                alt={hoveredCard.name}
+                className="mx-auto h-auto max-h-[min(280px,40vh)] w-auto rounded-md border object-contain"
+              />
+              <div className="text-sm font-medium leading-tight">{hoveredCard.name}</div>
+              <div className="text-xs text-muted-foreground">{hoveredCard.type_line}</div>
+            </div>
+          ) : (
+            <div className="flex min-h-[160px] items-center justify-center px-2 text-center text-xs text-muted-foreground">
+              Hover a card in the list to preview.
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ClassifiedCardRow({
+  entry,
+  onHover,
+}: {
+  entry: ClassifiedDeckEntry;
+  onHover: (card: ScryfallCard | null) => void;
+}) {
+  const thumb = cardThumbUrl(entry.card);
+  const mana = entry.card.mana_cost ?? (entry.card.cmc > 0 ? `{${entry.card.cmc}}` : "—");
+
+  return (
+    <li>
+      <div
+        className="flex items-center gap-3 rounded-md border border-transparent px-2 py-1.5 transition hover:border-border hover:bg-muted/50"
+        onMouseEnter={() => onHover(entry.card)}
+        onMouseLeave={() => onHover(null)}
+        onFocus={() => onHover(entry.card)}
+        onBlur={() => onHover(null)}
+      >
+        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border bg-muted/40">
+          {thumb ? (
+            <img
+              src={thumb}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[8px] text-muted-foreground">
+              ?
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="truncate text-sm font-medium">{entry.card.name}</span>
+            {entry.count > 1 ? (
+              <span className="shrink-0 text-xs text-muted-foreground">×{entry.count}</span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="font-mono">{mana}</span>
+            <span>{entry.reasons.join(" · ")}</span>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function ClassifiedCardList({
+  entries,
+  onHover,
+}: {
+  entries: ClassifiedDeckEntry[];
+  onHover: (card: ScryfallCard | null) => void;
+}) {
+  if (entries.length === 0) {
+    return (
+      <p className="px-2 py-4 text-sm text-muted-foreground">No cards in this category.</p>
+    );
+  }
+
+  return (
+    <ul className="space-y-1">
+      {entries.map((entry) => (
+        <ClassifiedCardRow
+          key={entry.card.id}
+          entry={entry}
+          onHover={onHover}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function CmcBucketList({
+  buckets,
+  onHover,
+}: {
+  buckets: CmcBucket[];
+  onHover: (card: ScryfallCard | null) => void;
+}) {
+  if (buckets.length === 0) {
+    return (
+      <p className="px-2 py-4 text-sm text-muted-foreground">No nonland spells in deck.</p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {buckets.map((bucket) => (
+        <div key={bucket.cmc}>
+          <div className="sticky top-0 z-10 mb-1 border-b bg-background/95 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
+            CMC {bucket.cmc} · {bucket.totalCount} card{bucket.totalCount === 1 ? "" : "s"}
+          </div>
+          <ClassifiedCardList entries={bucket.entries} onHover={onHover} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClickableStatCard({
+  statId,
   title,
   value,
   hint,
+  cardCount,
+  clickable,
+  isOpen,
+  onToggle,
 }: {
+  statId: OverviewStatId;
   title: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  cardCount?: number;
+  clickable: boolean;
+  isOpen: boolean;
+  onToggle: (id: OverviewStatId) => void;
 }) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+  const sharedClass = cn(
+    "flex h-full min-h-[7.5rem] flex-col rounded-xl border bg-card p-4 text-left shadow-sm transition",
+    clickable &&
+      "cursor-pointer hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+    isOpen && "border-primary ring-2 ring-primary/25"
+  );
+
+  const inner = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium leading-snug text-muted-foreground">
           {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-semibold tracking-tight">{value}</div>
-        {hint ? (
-          <div className="mt-2 text-sm text-muted-foreground">{hint}</div>
+        </span>
+        {clickable ? (
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              isOpen && "rotate-180"
+            )}
+            aria-hidden
+          />
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+      <div className="mt-auto flex flex-col gap-1.5 pt-4">
+        <div className="text-2xl font-semibold tabular-nums leading-none tracking-tight">
+          {value}
+        </div>
+        {hint ? <div className="text-sm text-muted-foreground">{hint}</div> : null}
+        {clickable && cardCount != null ? (
+          <Badge variant="secondary" className="w-fit text-[10px]">
+            {cardCount} cards
+          </Badge>
+        ) : null}
+      </div>
+    </>
+  );
+
+  if (!clickable) {
+    return <div className={sharedClass}>{inner}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      className={sharedClass}
+      aria-expanded={isOpen}
+      aria-controls={`stat-panel-${statId}`}
+      onClick={() => onToggle(statId)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle(statId);
+        }
+      }}
+    >
+      {inner}
+    </button>
   );
 }
 
@@ -362,7 +589,29 @@ function OverviewDeckContent({
   onEditImport: () => void;
   onStartOver: () => void;
 }) {
-  const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
+  const classifications = React.useMemo(
+    () => buildDeckClassifications(deck, tagMap),
+    [deck, tagMap]
+  );
+  const { counts } = classifications;
+  const landPercent =
+    counts.total > 0 ? (counts.lands / counts.total) * 100 : 0;
+
+  const [openStat, setOpenStat] = React.useState<OverviewStatId | null>(null);
+  const [hoveredListCard, setHoveredListCard] = React.useState<ScryfallCard | null>(
+    null
+  );
+
+  const toggleStat = React.useCallback((id: OverviewStatId) => {
+    setOpenStat((prev) => (prev === id ? null : id));
+    setHoveredListCard(null);
+  }, []);
+
+  const closeStatPanel = React.useCallback(() => {
+    setOpenStat(null);
+    setHoveredListCard(null);
+  }, []);
+
   const bracketEstimate = React.useMemo(
     () => estimateCommanderBracket(deck),
     [deck]
@@ -453,8 +702,8 @@ function OverviewDeckContent({
                 </div>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <Badge variant="secondary">{stats.uniqueCards} unique</Badge>
-                <Badge variant="secondary">{stats.totalCards} total</Badge>
+                <Badge variant="secondary">{deck.entries.length} unique</Badge>
+                <Badge variant="secondary">{counts.total} total</Badge>
               </div>
             </div>
           </div>
@@ -479,28 +728,117 @@ function OverviewDeckContent({
         Ramp and interaction are automatically classified from card text and tags.
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
-        <StatCard title="Total cards" value={stats.totalCards} />
-        <StatCard
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <ClickableStatCard
+          statId="total"
+          title="Total cards"
+          value={counts.total}
+          cardCount={classifications.total.length}
+          clickable
+          isOpen={openStat === "total"}
+          onToggle={toggleStat}
+        />
+        <ClickableStatCard
+          statId="lands"
           title="Lands"
-          value={stats.landCount}
-          hint={`${stats.landPercent.toFixed(1)}%`}
+          value={counts.lands}
+          hint={`${landPercent.toFixed(1)}%`}
+          cardCount={classifications.lands.length}
+          clickable
+          isOpen={openStat === "lands"}
+          onToggle={toggleStat}
         />
-        <StatCard
+        <ClickableStatCard
+          statId="avgCmc"
           title="Average CMC (non-lands)"
-          value={stats.avgCmcNonLands.toFixed(2)}
+          value={counts.avgCmcNonLands.toFixed(2)}
+          cardCount={classifications.cmcBuckets.reduce(
+            (sum, b) => sum + b.entries.length,
+            0
+          )}
+          clickable
+          isOpen={openStat === "avgCmc"}
+          onToggle={toggleStat}
         />
-        <StatCard title="Creatures" value={stats.creatureCount} />
-        <StatCard title="Ramp" value={stats.rampCount} />
-        <StatCard title="Interaction" value={stats.interactionCount} />
+        <ClickableStatCard
+          statId="creatures"
+          title="Creatures"
+          value={counts.creatures}
+          cardCount={classifications.creatures.length}
+          clickable
+          isOpen={openStat === "creatures"}
+          onToggle={toggleStat}
+        />
+        <ClickableStatCard
+          statId="ramp"
+          title="Ramp"
+          value={counts.ramp}
+          cardCount={classifications.ramp.length}
+          clickable
+          isOpen={openStat === "ramp"}
+          onToggle={toggleStat}
+        />
+        <ClickableStatCard
+          statId="interaction"
+          title="Interaction"
+          value={counts.interaction}
+          cardCount={classifications.interaction.length}
+          clickable
+          isOpen={openStat === "interaction"}
+          onToggle={toggleStat}
+        />
       </div>
+
+      {openStat ? (
+        <div id={`stat-panel-${openStat}`}>
+          <StatDrillDownPanel
+            title={
+              openStat === "total"
+                ? `All cards (${counts.total})`
+                : openStat === "lands"
+                  ? `Lands (${counts.lands})`
+                  : openStat === "creatures"
+                    ? `Creatures (${counts.creatures})`
+                    : openStat === "ramp"
+                      ? `Ramp (${counts.ramp})`
+                      : openStat === "interaction"
+                        ? `Interaction (${counts.interaction})`
+                        : `CMC distribution (${counts.avgCmcNonLands.toFixed(2)} avg)`
+            }
+            onClose={closeStatPanel}
+            hoveredCard={hoveredListCard}
+          >
+            {openStat === "avgCmc" ? (
+              <CmcBucketList
+                buckets={classifications.cmcBuckets}
+                onHover={setHoveredListCard}
+              />
+            ) : (
+              <ClassifiedCardList
+                entries={
+                  openStat === "total"
+                    ? classifications.total
+                    : openStat === "lands"
+                      ? classifications.lands
+                      : openStat === "creatures"
+                        ? classifications.creatures
+                        : openStat === "ramp"
+                          ? classifications.ramp
+                          : classifications.interaction
+                }
+                onHover={setHoveredListCard}
+              />
+            )}
+          </StatDrillDownPanel>
+        </div>
+      ) : null}
 
       <BracketEstimateCard estimate={bracketEstimate} />
 
       <Card>
         <details>
           <summary className="cursor-pointer list-none px-4 text-base font-medium [&::-webkit-details-marker]:hidden">
-            Decklist ({stats.totalCards} cards)
+            Decklist ({counts.total} cards)
           </summary>
           <CardContent className="mt-3 space-y-4">
             {groupedDecklist.map((group) => (
