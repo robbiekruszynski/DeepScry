@@ -3,8 +3,15 @@
 import * as React from "react";
 
 import type { Deck } from "@/lib/deck";
-import type { ScryfallCard } from "@/lib/scryfall";
-import { fetchCardById, searchCards } from "@/lib/scryfall";
+import { normalizeCardNameForImport } from "@/lib/deck";
+import type { CardMarketPrice, ScryfallCard } from "@/lib/scryfall";
+import {
+  applyMarketPriceToCard,
+  formatMarketPriceLine,
+  getCardMarketPrice,
+  searchCards,
+  tcgplayerSearchUrl,
+} from "@/lib/scryfall";
 import { computeDeckStats } from "@/lib/stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -135,9 +142,29 @@ const ADD_TIER_ROW: Record<
   },
 };
 
+function priceKey(name: string) {
+  return normalizeCardNameForImport(name).toLowerCase();
+}
+
+function entryMarketPrice(
+  entry: { card: ScryfallCard },
+  priceInfoMap: Record<string, CardMarketPrice>
+): CardMarketPrice | null {
+  return priceInfoMap[priceKey(entry.card.name)] ?? null;
+}
+
+function entryPriceUsd(
+  entry: { card: ScryfallCard },
+  priceInfoMap: Record<string, CardMarketPrice>
+): number | null {
+  return entryMarketPrice(entry, priceInfoMap)?.priceUsd ?? null;
+}
+
 export function BudgetTuner({ deck }: { deck: Deck }) {
   const [targetBudget, setTargetBudget] = React.useState<string>("0.00");
-  const [priceMap, setPriceMap] = React.useState<Record<string, number | null>>({});
+  const [priceInfoMap, setPriceInfoMap] = React.useState<
+    Record<string, CardMarketPrice>
+  >({});
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isHydratingEstimate, setIsHydratingEstimate] = React.useState(false);
   const [priceProgress, setPriceProgress] = React.useState<{ done: number; total: number }>({
@@ -146,7 +173,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
   });
   type SuggestionRow = {
     card: ScryfallCard;
-    price: number | null;
+    market: CardMarketPrice | null;
     priceStatus: "loading" | "ready" | "unavailable";
     reason: string;
     impact: number;
@@ -160,10 +187,10 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
   const [hovered, setHovered] = React.useState<ScryfallCard | null>(null);
   const hydrationStateRef = React.useRef<{
     deckSignature: string;
-    attemptedIds: Set<string>;
+    attemptedKeys: Set<string>;
   }>({
     deckSignature: "",
-    attemptedIds: new Set<string>(),
+    attemptedKeys: new Set<string>(),
   });
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
   const deckSignature = React.useMemo(
@@ -177,13 +204,10 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
   const currentDeckPrice = React.useMemo(() => {
     return deck.entries.reduce((sum, e) => {
-      const p =
-        priceMap[e.card.id] !== undefined
-          ? priceMap[e.card.id]
-          : e.card.price_usd ?? null;
+      const p = entryPriceUsd(e, priceInfoMap);
       return sum + (p ?? 0) * e.count;
     }, 0);
-  }, [deck.entries, priceMap]);
+  }, [deck.entries, priceInfoMap]);
 
   const prevDeckSigRef = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -201,23 +225,17 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
   const pricedCardCount = React.useMemo(() => {
     return deck.entries.filter((e) => {
-      const p =
-        priceMap[e.card.id] !== undefined
-          ? priceMap[e.card.id]
-          : e.card.price_usd ?? null;
+      const p = entryPriceUsd(e, priceInfoMap);
       return p !== null && p !== undefined;
     }).length;
-  }, [deck.entries, priceMap]);
+  }, [deck.entries, priceInfoMap]);
 
   const unpricedDeckCardCount = React.useMemo(() => {
     return deck.entries.filter((e) => {
-      const p =
-        priceMap[e.card.id] !== undefined
-          ? priceMap[e.card.id]
-          : e.card.price_usd ?? null;
+      const p = entryPriceUsd(e, priceInfoMap);
       return p === null || p === undefined;
     }).length;
-  }, [deck.entries, priceMap]);
+  }, [deck.entries, priceInfoMap]);
 
   const isCalculatingDeckValue =
     isHydratingEstimate || isRefreshing || priceProgress.total > 0;
@@ -251,64 +269,72 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
   const refreshPrices = React.useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const next: Record<string, number | null> = {};
-      setPriceProgress({ done: 0, total: deck.entries.length });
+      const uniqueEntries = Array.from(
+        new Map(
+          deck.entries.map((e) => [priceKey(e.card.name), e] as const)
+        ).values()
+      );
+      const next: Record<string, CardMarketPrice> = {};
+      setPriceProgress({ done: 0, total: uniqueEntries.length });
       let done = 0;
-      for (const e of deck.entries) {
+      for (const e of uniqueEntries) {
+        const key = priceKey(e.card.name);
         try {
-          const card = await fetchCardById(e.card.id);
-          next[e.card.id] = card.price_usd ?? null;
+          const market = await getCardMarketPrice(e.card.name, { bypassCache: true });
+          if (market) next[key] = market;
         } catch {
-          next[e.card.id] = e.card.price_usd ?? null;
+          const cached = entryMarketPrice(e, priceInfoMap);
+          if (cached) next[key] = cached;
         }
         done += 1;
-        setPriceProgress({ done, total: deck.entries.length });
+        setPriceProgress({ done, total: uniqueEntries.length });
       }
-      setPriceMap(next);
+      setPriceInfoMap((prev) => ({ ...prev, ...next }));
     } finally {
       setIsRefreshing(false);
       setPriceProgress({ done: 0, total: 0 });
     }
-  }, [deck.entries]);
+  }, [deck.entries, priceInfoMap]);
 
   React.useEffect(() => {
     let active = true;
     if (hydrationStateRef.current.deckSignature !== deckSignature) {
       hydrationStateRef.current = {
         deckSignature,
-        attemptedIds: new Set<string>(),
+        attemptedKeys: new Set<string>(),
       };
     }
 
     const unresolved = deck.entries.filter((e) => {
-      const p =
-        priceMap[e.card.id] !== undefined
-          ? priceMap[e.card.id]
-          : e.card.price_usd ?? null;
-      if (p !== null && p !== undefined) return false;
-      return !hydrationStateRef.current.attemptedIds.has(e.card.id);
+      const key = priceKey(e.card.name);
+      if (priceInfoMap[key]?.priceUsd != null) return false;
+      return !hydrationStateRef.current.attemptedKeys.has(key);
     });
-    if (unresolved.length === 0) return;
+    const uniqueUnresolved = Array.from(
+      new Map(unresolved.map((e) => [priceKey(e.card.name), e] as const)).values()
+    );
+    if (uniqueUnresolved.length === 0) return;
 
     (async () => {
       setIsHydratingEstimate(true);
       try {
-        const next: Record<string, number | null> = {};
-        setPriceProgress({ done: 0, total: unresolved.length });
+        const next: Record<string, CardMarketPrice> = {};
+        setPriceProgress({ done: 0, total: uniqueUnresolved.length });
         let done = 0;
-        for (const e of unresolved) {
-          hydrationStateRef.current.attemptedIds.add(e.card.id);
+        for (const e of uniqueUnresolved) {
+          const key = priceKey(e.card.name);
+          hydrationStateRef.current.attemptedKeys.add(key);
           try {
-            const card = await fetchCardById(e.card.id);
-            next[e.card.id] = card.price_usd ?? null;
+            const market = await getCardMarketPrice(e.card.name);
+            if (market) next[key] = market;
           } catch {
-            next[e.card.id] = e.card.price_usd ?? null;
+            /* keep unresolved */
           }
           done += 1;
-          setPriceProgress({ done, total: unresolved.length });
+          setPriceProgress({ done, total: uniqueUnresolved.length });
         }
         if (active) {
-          setPriceMap((prev) => ({ ...prev, ...next }));
+          setPriceInfoMap((prev) => ({ ...prev, ...next }));
         }
       } finally {
         if (active) setIsHydratingEstimate(false);
@@ -319,7 +345,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     return () => {
       active = false;
     };
-  }, [deck.entries, deckSignature]); // priceMap intentionally excluded — ref tracks attempted IDs
+  }, [deck.entries, deckSignature]); // priceInfoMap intentionally excluded — ref tracks attempted keys
 
   const buildAddSuggestions = React.useCallback(async () => {
     const commander = deck.commanderName
@@ -426,7 +452,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     setSuggestions(
       candidates.map((c) => ({
         ...c,
-        price: null,
+        market: null,
         priceStatus: "loading" as const,
       }))
     );
@@ -435,26 +461,24 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     const priced = await Promise.all(
       candidates.map(async (c) => {
         try {
-          const fetched = await fetchCardById(c.card.id);
-          const usd = fetched.price_usd;
-          if (usd === null || usd === undefined) {
+          const market = await getCardMarketPrice(c.card.name);
+          if (!market || market.priceUsd == null) {
             return {
               ...c,
-              card: fetched,
-              price: null,
+              market: market ?? null,
               priceStatus: "unavailable" as const,
             };
           }
           return {
             ...c,
-            card: fetched,
-            price: usd,
+            card: applyMarketPriceToCard(c.card, market),
+            market,
             priceStatus: "ready" as const,
           };
         } catch {
           return {
             ...c,
-            price: null,
+            market: null,
             priceStatus: "unavailable" as const,
           };
         }
@@ -466,15 +490,15 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
         ? priced.filter(
             (s) =>
               s.priceStatus === "ready" &&
-              s.price !== null &&
-              s.price <= priceCeiling + 0.005
+              s.market?.priceUsd != null &&
+              s.market.priceUsd <= priceCeiling + 0.005
           )
         : priced;
 
     withinBudget.sort(
       (a, b) =>
         b.impact - a.impact ||
-        (a.price ?? Infinity) - (b.price ?? Infinity)
+        (a.market?.priceUsd ?? Infinity) - (b.market?.priceUsd ?? Infinity)
     );
     setSuggestions(withinBudget);
     setIsLoadingSuggestionPrices(false);
@@ -528,7 +552,16 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                 rel="noreferrer"
                 className="underline-offset-2 hover:underline"
               >
-                Buy on TCGplayer
+                Buy on TCGPlayer
+              </a>
+            ) : hovered?.name ? (
+              <a
+                href={tcgplayerSearchUrl(hovered.name)}
+                target="_blank"
+                rel="noreferrer"
+                className="underline-offset-2 hover:underline"
+              >
+                Search on TCGPlayer
               </a>
             ) : null}
             {hovered?.purchase_uris?.cardmarket ? (
@@ -568,7 +601,11 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
               "Calculating deck value..."
             ) : (
               <>
-                Current deck value:{" "}
+                <span
+                  title="Market price = average of recent TCGPlayer sales for the cheapest nonfoil printing (foil if no nonfoil exists)."
+                >
+                  Deck value (TCGPlayer market, lowest-priced printings):{" "}
+                </span>
                 <span className="text-lg font-bold tabular-nums">
                   ${currentDeckPrice.toFixed(2)}
                 </span>
@@ -615,7 +652,8 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
 
               <div className="rounded border bg-muted/20 p-3 space-y-1">
                 <div className="text-xs text-muted-foreground">
-                  Pricing coverage: {pricedCardCount}/{totalUniqueCount} unique cards
+                  Pricing coverage (TCGPlayer market, lowest printing): {pricedCardCount}/
+                  {totalUniqueCount} unique cards
                 </div>
                 {isHydratingEstimate || isRefreshing ? (
                   <div className="mt-2 space-y-1">
@@ -677,8 +715,12 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                   const withinPriceCeiling =
                     priceCeiling !== null &&
                     s.priceStatus === "ready" &&
-                    s.price !== null &&
-                    s.price <= priceCeiling + 0.005;
+                    s.market?.priceUsd != null &&
+                    s.market.priceUsd <= priceCeiling + 0.005;
+                  const buyUrl =
+                    s.market?.tcgplayerUrl ?? tcgplayerSearchUrl(s.card.name);
+                  const buyIsSearch =
+                    s.market?.tcgplayerIsSearch ?? !s.market?.tcgplayerUrl;
                   return (
                     <div
                       key={s.card.id}
@@ -704,30 +746,37 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                         >
                           {s.card.name}
                         </a>
-                        <span className="shrink-0 text-xs">
+                        <span
+                          className="shrink-0 text-right text-xs"
+                          title="TCGPlayer market = average of recent sales for this printing"
+                        >
                           {s.priceStatus === "loading" ? (
                             <span className="text-muted-foreground">Fetching price…</span>
-                          ) : s.priceStatus === "unavailable" ? (
+                          ) : s.priceStatus === "unavailable" || !s.market ? (
                             <span className="text-muted-foreground">Price unavailable</span>
                           ) : (
-                            `$${s.price!.toFixed(2)}`
+                            <span className="block max-w-[11rem] leading-snug">
+                              {formatMarketPriceLine(s.market)}
+                            </span>
                           )}
                         </span>
                       </div>
-                      {s.priceStatus === "ready" ? (
+                      {s.priceStatus === "ready" && s.market ? (
                         <a
-                          href={
-                            s.card.purchase_uris?.tcgplayer ??
-                            `https://scryfall.com/search?q=${encodeURIComponent(`!"${s.card.name}"`)}`
-                          }
+                          href={buyUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="mt-1 inline-block rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
                         >
-                          {s.card.purchase_uris?.tcgplayer
-                            ? "Buy on TCGPlayer →"
-                            : "Search on Scryfall →"}
+                          {buyIsSearch
+                            ? "Search on TCGPlayer →"
+                            : "Buy on TCGPlayer →"}
                         </a>
+                      ) : null}
+                      {s.market?.tcgplayerIsSearch ? (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          No direct TCGPlayer link for this printing — opens search.
+                        </p>
                       ) : null}
                       <div className="text-xs text-muted-foreground">{s.reason}</div>
                       <div className="text-xs text-muted-foreground">
@@ -753,7 +802,8 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Prices come from Scryfall and can be refreshed any time.
+          Prices are TCGPlayer market averages from Scryfall (lowest-priced printing per card).
+          Cached 24 hours; use Refresh prices to update.
         </div>
       </CardContent>
     </Card>

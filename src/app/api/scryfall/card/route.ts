@@ -42,9 +42,11 @@ export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id")?.trim();
   const commander = req.nextUrl.searchParams.get("commander")?.trim();
   const search = req.nextUrl.searchParams.get("search")?.trim();
-  if (!fuzzy && !id && !commander && !search) {
+  const prints = req.nextUrl.searchParams.get("prints")?.trim();
+  const page = req.nextUrl.searchParams.get("page")?.trim();
+  if (!fuzzy && !id && !commander && !search && !prints) {
     return NextResponse.json(
-      { error: "Missing fuzzy, id, commander, or search query parameter." },
+      { error: "Missing fuzzy, id, commander, search, or prints query parameter." },
       { status: 400 }
     );
   }
@@ -54,7 +56,9 @@ export async function GET(req: NextRequest) {
 
     const url = id
       ? `https://api.scryfall.com/cards/${encodeURIComponent(id)}`
-      : commander
+      : prints
+        ? `https://api.scryfall.com/cards/search?unique=prints&q=${encodeURIComponent(`!"${prints}"`)}${page ? `&page=${encodeURIComponent(page)}` : ""}`
+        : commander
         ? `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(`name:${commander} is:commander`)}`
         : search
           ? `https://api.scryfall.com/cards/search?unique=cards&order=edhrec&q=${encodeURIComponent(search)}`
@@ -77,7 +81,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!res.ok) {
-      if ((commander || search) && res.status === 404) {
+      if ((commander || search || prints) && res.status === 404) {
         return NextResponse.json({ data: [] });
       }
       return NextResponse.json(

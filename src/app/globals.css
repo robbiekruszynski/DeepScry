@@ -108,6 +108,17 @@
   [role="tabpanel"][data-ending-style] {
     display: none !important;
   }
+
+  @keyframes hand-draw-in {
+    from {
+      transform: translateX(96px) translateY(10px);
+      opacity: 0.4;
+    }
+    to {
+      transform: translateX(0) translateY(0);
+      opacity: 1;
+    }
+  }
 }
 
 body {

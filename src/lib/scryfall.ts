@@ -22,6 +22,11 @@ export type ScryfallCard = {
   image_url_art_crop?: string;
   price_usd?: number | null;
   price_updated_at?: number;
+  /** Set of the printing used for price_usd / TCGPlayer link */
+  price_set_code?: string;
+  price_set_name?: string;
+  price_is_foil?: boolean;
+  price_source_printing_id?: string;
   purchase_uris?: {
     tcgplayer?: string;
     cardmarket?: string;
@@ -29,16 +34,259 @@ export type ScryfallCard = {
   };
 };
 
+/** TCGPlayer market price tied to a single Scryfall printing. */
+export type CardMarketPrice = {
+  name: string;
+  printingId: string;
+  priceUsd: number | null;
+  isFoil: boolean;
+  setCode: string;
+  setName: string;
+  tcgplayerUrl: string;
+  tcgplayerIsSearch: boolean;
+  fetchedAt: number;
+};
+
 type CacheRecord = {
   fetchedAt: number;
   card: ScryfallCard;
 };
 
+type PriceCacheRecord = {
+  fetchedAt: number;
+  price: CardMarketPrice;
+};
+
 const STORAGE_KEY = "scry:scryfall-cache:v2";
+const PRICE_CACHE_KEY = "scry:price-cache:v1";
+const PRICE_TTL_MS = 24 * 60 * 60 * 1000;
 
 let memoryCache: Map<string, CacheRecord> | null = null;
+let memoryPriceCache: Map<string, PriceCacheRecord> | null = null;
 
 const enqueueScryfall = createAsyncQueue();
+
+function getMemoryPriceCache() {
+  if (!memoryPriceCache) memoryPriceCache = new Map();
+  return memoryPriceCache;
+}
+
+function readPriceStorage(): Record<string, PriceCacheRecord> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PRICE_CACHE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, PriceCacheRecord>;
+  } catch {
+    return {};
+  }
+}
+
+function writePriceStorage(next: Record<string, PriceCacheRecord>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+
+export function tcgplayerSearchUrl(cardName: string) {
+  return `https://www.tcgplayer.com/search/magic/product?q=${encodeURIComponent(cardName)}`;
+}
+
+export function formatMarketPriceLine(price: CardMarketPrice): string {
+  if (price.priceUsd == null) return "Price unavailable";
+  const amount = `$${price.priceUsd.toFixed(2)}`;
+  const setLabel = price.setName || price.setCode || "Unknown set";
+  const foil = price.isFoil ? " (foil)" : "";
+  return `${amount} · ${setLabel}${foil}`;
+}
+
+export function applyMarketPriceToCard(
+  card: ScryfallCard,
+  market: CardMarketPrice
+): ScryfallCard {
+  return {
+    ...card,
+    price_usd: market.priceUsd,
+    price_updated_at: market.fetchedAt,
+    price_set_code: market.setCode || undefined,
+    price_set_name: market.setName || undefined,
+    price_is_foil: market.isFoil || undefined,
+    price_source_printing_id: market.printingId,
+    purchase_uris: {
+      ...card.purchase_uris,
+      tcgplayer: market.tcgplayerIsSearch ? undefined : market.tcgplayerUrl,
+    },
+  };
+}
+
+function getCachedMarketPrice(name: string): CardMarketPrice | null {
+  const key = normalizeKey(name);
+  const mem = getMemoryPriceCache().get(key);
+  if (mem && Date.now() - mem.fetchedAt < PRICE_TTL_MS) return mem.price;
+
+  const store = readPriceStorage();
+  const rec = store[key];
+  if (!rec || Date.now() - rec.fetchedAt >= PRICE_TTL_MS) return null;
+  getMemoryPriceCache().set(key, rec);
+  return rec.price;
+}
+
+function persistMarketPrice(name: string, price: CardMarketPrice) {
+  const key = normalizeKey(name);
+  const canonicalKey = normalizeKey(price.name);
+  const rec: PriceCacheRecord = { fetchedAt: price.fetchedAt, price };
+  getMemoryPriceCache().set(key, rec);
+  if (key !== canonicalKey) getMemoryPriceCache().set(canonicalKey, rec);
+
+  const store = readPriceStorage();
+  store[key] = rec;
+  if (key !== canonicalKey) store[canonicalKey] = rec;
+  writePriceStorage(store);
+}
+
+function selectCheapestPrinting(rows: unknown[]): CardMarketPrice | null {
+  let bestNonfoil: { row: Record<string, unknown>; price: number } | null = null;
+  let bestFoil: { row: Record<string, unknown>; price: number } | null = null;
+
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const prices = row.prices as Record<string, unknown> | undefined;
+    const name = String(row.name ?? "");
+    if (!name) continue;
+
+    const usd = prices?.usd;
+    if (usd !== undefined && usd !== null && usd !== "") {
+      const p = Number(usd);
+      if (Number.isFinite(p) && (!bestNonfoil || p < bestNonfoil.price)) {
+        bestNonfoil = { row, price: p };
+      }
+    }
+
+    const usdFoil = prices?.usd_foil;
+    if (usdFoil !== undefined && usdFoil !== null && usdFoil !== "") {
+      const p = Number(usdFoil);
+      if (Number.isFinite(p) && (!bestFoil || p < bestFoil.price)) {
+        bestFoil = { row, price: p };
+      }
+    }
+  }
+
+  const pick = bestNonfoil ?? bestFoil;
+  if (!pick) return null;
+
+  const isFoil = !bestNonfoil && !!bestFoil;
+  const row = pick.row;
+  const cardName = String(row.name ?? "");
+  const purchaseUris = row.purchase_uris as Record<string, unknown> | undefined;
+  const tcgDirect =
+    purchaseUris?.tcgplayer != null ? String(purchaseUris.tcgplayer) : null;
+
+  return {
+    name: cardName,
+    printingId: String(row.id ?? ""),
+    priceUsd: pick.price,
+    isFoil,
+    setCode: String(row.set ?? ""),
+    setName: String(row.set_name ?? ""),
+    tcgplayerUrl: tcgDirect ?? tcgplayerSearchUrl(cardName),
+    tcgplayerIsSearch: !tcgDirect,
+    fetchedAt: Date.now(),
+  };
+}
+
+async function fetchPrintingsPage(cardName: string, page: number) {
+  const useProxy = typeof window !== "undefined";
+  if (!useProxy) {
+    await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+  }
+
+  const url = useProxy
+    ? `/api/scryfall/card?prints=${encodeURIComponent(cardName)}&page=${page}`
+    : `https://api.scryfall.com/cards/search?unique=prints&q=${encodeURIComponent(`!"${cardName}"`)}&page=${page}`;
+
+  let payload = await fetchCardPayloadWithRetry(url);
+  if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+    payload = await fetchCardPayloadWithRetry(
+      `https://api.scryfall.com/cards/search?unique=prints&q=${encodeURIComponent(`!"${cardName}"`)}&page=${page}`
+    );
+  }
+
+  if (payload.status === 429) {
+    const retryMs = Math.max(
+      parseRetryAfterMs(payload.retryAfter) ?? 60_000,
+      60_000
+    );
+    await delay(retryMs);
+    if (!useProxy) await delay(MIN_MS_BETWEEN_SCRYFALL_REQUESTS);
+    payload = await fetchCardPayloadWithRetry(url);
+    if (useProxy && !payload.ok && isHtmlErrorPage(payload.text)) {
+      payload = await fetchCardPayloadWithRetry(
+        `https://api.scryfall.com/cards/search?unique=prints&q=${encodeURIComponent(`!"${cardName}"`)}&page=${page}`
+      );
+    }
+  }
+
+  if (!payload.ok) {
+    throw new Error(
+      `Scryfall printings search failed (${payload.status}): ${errorDetailFromPayload(payload)}`
+    );
+  }
+
+  let json: { data?: unknown[]; has_more?: boolean };
+  try {
+    json = JSON.parse(payload.text) as typeof json;
+  } catch {
+    throw new Error("Scryfall returned invalid JSON.");
+  }
+
+  return json;
+}
+
+async function fetchAllPrintings(cardName: string): Promise<unknown[]> {
+  const all: unknown[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const json = await fetchPrintingsPage(cardName, page);
+    all.push(...(json.data ?? []));
+    hasMore = !!json.has_more;
+    page += 1;
+    if (page > 50) break;
+  }
+
+  return all;
+}
+
+/**
+ * Resolve TCGPlayer market price from the cheapest Scryfall printing (nonfoil preferred).
+ * Price and purchase link always come from the same printing object.
+ */
+export async function getCardMarketPrice(
+  cardName: string,
+  opts?: { bypassCache?: boolean }
+): Promise<CardMarketPrice | null> {
+  const n = normalizeCardNameForImport(cardName);
+  if (!opts?.bypassCache) {
+    const cached = getCachedMarketPrice(n) ?? getCachedMarketPrice(cardName);
+    if (cached) return cached;
+  }
+
+  return enqueueScryfall(async () => {
+    const printings = await fetchAllPrintings(n);
+    const market = selectCheapestPrinting(printings);
+    if (market) {
+      persistMarketPrice(n, market);
+      if (normalizeKey(n) !== normalizeKey(cardName)) {
+        persistMarketPrice(cardName, market);
+      }
+    }
+    return market;
+  });
+}
 
 function getMemoryCache() {
   if (!memoryCache) memoryCache = new Map();
