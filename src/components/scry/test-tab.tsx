@@ -37,7 +37,13 @@ const HAND_CARD_ASPECT = "63 / 88";
 const HAND_FAN_OVERLAP = 0.4;
 const HAND_FAN_STEP = HAND_CARD_W * (1 - HAND_FAN_OVERLAP);
 const HAND_CARD_GAP = 10;
-const HAND_ROW_HEIGHT = HAND_CARD_H + 20;
+const HAND_SPREAD_DELTA = HAND_CARD_W + HAND_CARD_GAP - HAND_FAN_STEP;
+const HAND_HOVER_RISE_PX = 16;
+const HAND_HOVER_SCALE = 1.15;
+const HAND_HOVER_PART_PX = 12;
+const HAND_FAN_ROTATE_DEG = 1.25;
+const HAND_HOVER_TRANSITION = "transform 150ms ease-out";
+const HAND_ROW_HEIGHT = HAND_CARD_H + 24;
 const HAND_DRAW_ANIM_MS = 200;
 const TOP_BAR_H = 40;
 const BOTTOM_BAR_H = 176;
@@ -250,28 +256,80 @@ function DroppableZone({
   );
 }
 
-function getHandCardOffsets(
+function fanRestWidth(count: number) {
+  if (count <= 0) return 0;
+  return HAND_CARD_W + (count - 1) * HAND_FAN_STEP;
+}
+
+function fanSpreadWidth(count: number) {
+  if (count <= 0) return 0;
+  return HAND_CARD_W + (count - 1) * (HAND_CARD_W + HAND_CARD_GAP);
+}
+
+function indexAtFanPointer(
+  clientX: number,
+  fanRect: DOMRect,
+  scrollLeft: number,
+  count: number
+): number | null {
+  if (count <= 0) return null;
+  const x = clientX - fanRect.left + scrollLeft;
+  let bestIndex = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < count; i++) {
+    const center = i * HAND_FAN_STEP + HAND_CARD_W / 2;
+    const dist = Math.abs(x - center);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
+
+function handCardTransform(
+  index: number,
   count: number,
   hoveredIndex: number | null,
   spread: boolean
-): number[] {
-  if (count === 0) return [];
-  const step =
-    spread || hoveredIndex !== null
-      ? HAND_CARD_W + HAND_CARD_GAP
-      : HAND_FAN_STEP;
-  return Array.from({ length: count }, (_, i) => i * step);
+): string {
+  const parts: string[] = [];
+  const center = (count - 1) / 2;
+
+  if (spread) {
+    parts.push(`translateX(${index * HAND_SPREAD_DELTA}px)`);
+  } else if (hoveredIndex !== null) {
+    if (index < hoveredIndex) {
+      parts.push(`translateX(${-HAND_HOVER_PART_PX}px)`);
+    } else if (index > hoveredIndex) {
+      parts.push(`translateX(${HAND_HOVER_PART_PX}px)`);
+    }
+    if (index === hoveredIndex) {
+      parts.push(`translateY(${-HAND_HOVER_RISE_PX}px)`, `scale(${HAND_HOVER_SCALE})`);
+    } else {
+      const rot = (index - center) * HAND_FAN_ROTATE_DEG;
+      parts.push(`rotate(${rot}deg)`);
+    }
+  } else {
+    const rot = (index - center) * HAND_FAN_ROTATE_DEG;
+    parts.push(`rotate(${rot}deg)`);
+  }
+
+  return parts.join(" ");
 }
 
-function getHandFanWidth(count: number, hoveredIndex: number | null, spread: boolean) {
-  if (count === 0) return 0;
-  const offsets = getHandCardOffsets(count, hoveredIndex, spread);
-  return HAND_CARD_W + (offsets[count - 1] ?? 0);
+function handCardZIndex(
+  index: number,
+  hoveredIndex: number | null,
+  isDragging: boolean
+): number {
+  if (isDragging) return 60;
+  if (hoveredIndex === index) return 50;
+  return 10 + index;
 }
 
-function FannedHandRow({
+const FannedHandRow = React.memo(function FannedHandRow({
   cards,
-  hoverUid,
   handSpread,
   enteringUids,
   activeDragId,
@@ -280,7 +338,6 @@ function FannedHandRow({
   onContextMenu,
 }: {
   cards: FieldCard[];
-  hoverUid: string | null;
   handSpread: boolean;
   enteringUids: Set<string>;
   activeDragId: string | null;
@@ -289,13 +346,19 @@ function FannedHandRow({
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const fanInnerRef = React.useRef<HTMLDivElement>(null);
   const [fadeLeft, setFadeLeft] = React.useState(false);
   const [fadeRight, setFadeRight] = React.useState(false);
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
 
-  const hoveredIndex = hoverUid ? cards.findIndex((c) => c.uid === hoverUid) : null;
   const spread = handSpread || activeDragId?.startsWith("hand-") === true;
-  const offsets = getHandCardOffsets(cards.length, hoveredIndex, spread);
-  const fanWidth = getHandFanWidth(cards.length, hoveredIndex, spread);
+  const trackWidth = spread ? fanSpreadWidth(cards.length) : fanRestWidth(cards.length);
+
+  React.useEffect(() => {
+    if (!spread) return;
+    setHoveredIndex(null);
+    onHover(null, null);
+  }, [spread, onHover]);
 
   const updateFades = React.useCallback(() => {
     const el = scrollRef.current;
@@ -305,6 +368,30 @@ function FannedHandRow({
     setFadeRight(maxScroll > 4 && el.scrollLeft < maxScroll - 4);
   }, []);
 
+  const handleFanPointerMove = React.useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const fan = fanInnerRef.current;
+      const scroll = scrollRef.current;
+      if (!fan || cards.length === 0) return;
+      const idx = indexAtFanPointer(
+        e.clientX,
+        fan.getBoundingClientRect(),
+        scroll?.scrollLeft ?? 0,
+        cards.length
+      );
+      if (idx === null || idx === hoveredIndex) return;
+      setHoveredIndex(idx);
+      const fc = cards[idx];
+      if (fc) onHover(fc.uid, fc.card);
+    },
+    [cards, hoveredIndex, onHover]
+  );
+
+  const handleFanPointerLeave = React.useCallback(() => {
+    setHoveredIndex(null);
+    onHover(null, null);
+  }, [onHover]);
+
   React.useEffect(() => {
     updateFades();
     const el = scrollRef.current;
@@ -312,7 +399,7 @@ function FannedHandRow({
     const ro = new ResizeObserver(updateFades);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [cards.length, hoveredIndex, spread, updateFades]);
+  }, [cards.length, spread, updateFades]);
 
   React.useEffect(() => {
     if (!enteringUids.size || !scrollRef.current) return;
@@ -334,7 +421,7 @@ function FannedHandRow({
   }
 
   return (
-    <div className="relative" style={{ height: HAND_ROW_HEIGHT }}>
+    <div className="relative overflow-visible" style={{ height: HAND_ROW_HEIGHT }}>
       {fadeLeft ? (
         <div
           className="pointer-events-none absolute left-0 top-0 z-40 h-full w-8 bg-gradient-to-r from-muted/90 to-transparent"
@@ -349,42 +436,42 @@ function FannedHandRow({
       ) : null}
       <div
         ref={scrollRef}
-        className="h-full overflow-x-auto overflow-y-visible scroll-smooth [scrollbar-width:thin]"
+        className="h-full overflow-x-auto overflow-y-visible [scrollbar-width:thin]"
         onScroll={updateFades}
       >
         <div
-          className="relative mx-auto min-h-full"
-          style={{ width: Math.max(fanWidth, 1), height: HAND_ROW_HEIGHT }}
+          ref={fanInnerRef}
+          className="relative mx-auto overflow-visible"
+          style={{ width: Math.max(trackWidth, 1), height: HAND_ROW_HEIGHT }}
+          onMouseMove={handleFanPointerMove}
+          onMouseLeave={handleFanPointerLeave}
         >
           {cards.map((fc, index) => {
-            const isHovered = hoverUid === fc.uid;
             const isDragging = activeDragId === `hand-${fc.uid}`;
+            const isHovered = hoveredIndex === index;
             const isEntering = enteringUids.has(fc.uid);
-            const left = offsets[index] ?? 0;
+            const slotLeft = index * HAND_FAN_STEP;
+            const transform = handCardTransform(index, cards.length, hoveredIndex, spread);
+            const zIndex = handCardZIndex(index, hoveredIndex, isDragging);
 
             return (
               <div
                 key={fc.uid}
-                className="absolute bottom-0"
+                className="absolute bottom-0 overflow-visible"
                 style={{
-                  left,
+                  left: slotLeft,
                   width: HAND_CARD_W,
                   height: HAND_CARD_H,
-                  zIndex: isDragging ? 60 : isHovered ? 50 + index : 10 + index,
-                  transform: isHovered && !isDragging ? "translateY(-16px)" : undefined,
-                  transition: `left ${HAND_DRAW_ANIM_MS}ms ease-out, transform ${HAND_DRAW_ANIM_MS}ms ease-out`,
-                  animation: isEntering
-                    ? `hand-draw-in ${HAND_DRAW_ANIM_MS}ms ease-out forwards`
-                    : undefined,
+                  zIndex,
                 }}
-                onMouseEnter={() => onHover(fc.uid, fc.card)}
-                onMouseLeave={() => onHover(null, null)}
               >
-                <DraggableHandCard
+                <HandCardInner
                   fc={fc}
-                  imageUrl={imageUrl}
+                  imageSrc={imageUrl(fc.card)}
                   isDragging={isDragging}
                   isHovered={isHovered}
+                  isEntering={isEntering}
+                  transform={transform}
                   onContextMenu={onContextMenu}
                 />
               </div>
@@ -394,28 +481,36 @@ function FannedHandRow({
       </div>
     </div>
   );
-}
+});
 
-function DraggableHandCard({
+const HandCardInner = React.memo(function HandCardInner({
   fc,
-  imageUrl,
+  imageSrc,
   isDragging,
   isHovered,
+  isEntering,
+  transform,
   onContextMenu,
 }: {
   fc: FieldCard;
-  imageUrl: (card: ScryfallCard) => string;
+  imageSrc: string;
   isDragging: boolean;
   isHovered: boolean;
+  isEntering: boolean;
+  transform: string;
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform: dragTransform } = useDraggable({
     id: `hand-${fc.uid}`,
     data: { uid: fc.uid, card: fc.card, sourceZone: "hand" } satisfies CardDragData,
   });
   const longPress = useLongPress((e) => onContextMenu(e as React.PointerEvent, fc.uid));
 
-  const dragTransform = transform ? CSS.Translate.toString(transform) : "";
+  const dragOffset = dragTransform ? CSS.Translate.toString(dragTransform) : "";
+  const composedTransform =
+    dragOffset && transform !== "none"
+      ? `${dragOffset} ${transform}`
+      : dragOffset || transform;
 
   return (
     <div
@@ -429,13 +524,15 @@ function DraggableHandCard({
       } ${
         isHovered
           ? "border-primary shadow-xl ring-2 ring-primary/50"
-          : "border-border hover:ring-2 hover:ring-primary/30"
-      }`}
+          : "border-border"
+      } ${isEntering ? "hand-card-entering" : ""}`}
       style={{
         width: HAND_CARD_W,
         height: HAND_CARD_H,
-        transform: dragTransform || undefined,
-        transition: "box-shadow 150ms ease, opacity 150ms ease",
+        transform: composedTransform === "none" ? undefined : composedTransform,
+        transformOrigin: "center bottom",
+        transition: isEntering ? undefined : HAND_HOVER_TRANSITION,
+        willChange: "transform",
       }}
       onPointerDown={(e) => {
         longPress.onPointerDown(e);
@@ -450,8 +547,10 @@ function DraggableHandCard({
       }}
     >
       <img
-        src={imageUrl(fc.card)}
+        src={imageSrc}
         alt={fc.card.name}
+        width={HAND_CARD_W}
+        height={HAND_CARD_H}
         className="pointer-events-none h-full w-full object-cover"
         draggable={false}
         onError={(e) => {
@@ -460,7 +559,7 @@ function DraggableHandCard({
       />
     </div>
   );
-}
+});
 
 function BattlefieldCardView({
   fc,
@@ -1358,7 +1457,6 @@ export function TestTab({
               {handExpanded ? (
                 <FannedHandRow
                   cards={hand}
-                  hoverUid={hoverUid}
                   handSpread={handSpread}
                   enteringUids={enteringHandUids}
                   activeDragId={activeDragId}
