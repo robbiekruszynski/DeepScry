@@ -25,6 +25,25 @@ const SIDEBAR_W = 280;
 const DEFAULT_BF_X = 20;
 const DEFAULT_BF_Y = 24;
 
+function battlefieldCardSize(tapped: boolean) {
+  return tapped ? { w: BF_CARD_H, h: BF_CARD_W } : { w: BF_CARD_W, h: BF_CARD_H };
+}
+
+function clampBattlefieldPosition(
+  x: number,
+  y: number,
+  tapped: boolean,
+  rect: DOMRect
+) {
+  const { w, h } = battlefieldCardSize(tapped);
+  const maxX = Math.max(0, rect.width - w);
+  const maxY = Math.max(0, rect.height - h);
+  return {
+    x: Math.min(maxX, Math.max(0, x)),
+    y: Math.min(maxY, Math.max(0, y)),
+  };
+}
+
 type FieldCard = { card: ScryfallCard; uid: string };
 
 type BattlefieldCard = FieldCard & {
@@ -224,6 +243,9 @@ export function TestTab({
 
   const battlefieldRef = React.useRef<HTMLDivElement>(null);
   const handZoneRef = React.useRef<HTMLDivElement>(null);
+  const handStateRef = React.useRef<FieldCard[]>([]);
+  const battlefieldStateRef = React.useRef<BattlefieldCard[]>([]);
+  const dragListenersCleanupRef = React.useRef<(() => void) | null>(null);
   const dragRef = React.useRef<
     | {
         source: "battlefield";
@@ -232,6 +254,7 @@ export function TestTab({
         startY: number;
         origX: number;
         origY: number;
+        tapped: boolean;
       }
     | {
         source: "hand";
@@ -268,6 +291,21 @@ export function TestTab({
   } | null>(null);
   const [handDragOverBattlefield, setHandDragOverBattlefield] = React.useState(false);
   const [handDragOverHand, setHandDragOverHand] = React.useState(false);
+
+  React.useEffect(() => {
+    handStateRef.current = hand;
+  }, [hand]);
+
+  React.useEffect(() => {
+    battlefieldStateRef.current = battlefield;
+  }, [battlefield]);
+
+  React.useEffect(
+    () => () => {
+      dragListenersCleanupRef.current?.();
+    },
+    []
+  );
 
   const dealOpeningHand = React.useCallback(
     (size: number) => {
@@ -441,37 +479,39 @@ export function TestTab({
 
   const playHandCardToBattlefieldAt = React.useCallback(
     (uid: string, x: number, y: number) => {
-      let played: FieldCard | null = null;
-      setHand((h) => {
-        const idx = h.findIndex((c) => c.uid === uid);
-        if (idx < 0) return h;
-        played = h[idx]!;
-        return [...h.slice(0, idx), ...h.slice(idx + 1)];
-      });
-      if (!played) return;
-      setBattlefield((bf) => {
-        if (bf.some((c) => c.uid === uid)) return bf;
-        return [...bf, { ...played!, x, y, tapped: false }];
-      });
+      const idx = handStateRef.current.findIndex((c) => c.uid === uid);
+      if (idx < 0) return;
+      const fc = handStateRef.current[idx]!;
+      if (battlefieldStateRef.current.some((c) => c.uid === uid)) return;
+      const nextHand = handStateRef.current.filter((c) => c.uid !== uid);
+      const nextBattlefield = [
+        ...battlefieldStateRef.current,
+        { ...fc, x, y, tapped: false },
+      ];
+      handStateRef.current = nextHand;
+      battlefieldStateRef.current = nextBattlefield;
+      setHand(nextHand);
+      setBattlefield(nextBattlefield);
     },
     []
   );
 
   const playHandCardToBattlefield = React.useCallback(
     (uid: string) => {
-      let played: FieldCard | null = null;
-      setHand((h) => {
-        const idx = h.findIndex((c) => c.uid === uid);
-        if (idx < 0) return h;
-        played = h[idx]!;
-        return [...h.slice(0, idx), ...h.slice(idx + 1)];
-      });
-      if (!played) return;
-      setBattlefield((bf) => {
-        if (bf.some((c) => c.uid === uid)) return bf;
-        const pos = nextBattlefieldPosition(bf.length);
-        return [...bf, { ...played!, x: pos.x, y: pos.y, tapped: false }];
-      });
+      const idx = handStateRef.current.findIndex((c) => c.uid === uid);
+      if (idx < 0) return;
+      const fc = handStateRef.current[idx]!;
+      if (battlefieldStateRef.current.some((c) => c.uid === uid)) return;
+      const pos = nextBattlefieldPosition(battlefieldStateRef.current.length);
+      const nextHand = handStateRef.current.filter((c) => c.uid !== uid);
+      const nextBattlefield = [
+        ...battlefieldStateRef.current,
+        { ...fc, x: pos.x, y: pos.y, tapped: false },
+      ];
+      handStateRef.current = nextHand;
+      battlefieldStateRef.current = nextBattlefield;
+      setHand(nextHand);
+      setBattlefield(nextBattlefield);
     },
     []
   );
@@ -497,15 +537,15 @@ export function TestTab({
   }, []);
 
   const moveBattlefieldToHand = React.useCallback((uid: string) => {
-    let returning: FieldCard | null = null;
-    setBattlefield((bf) => {
-      const fc = bf.find((c) => c.uid === uid);
-      if (!fc) return bf;
-      returning = { card: fc.card, uid: fc.uid };
-      return bf.filter((c) => c.uid !== uid);
-    });
-    if (!returning) return;
-    setHand((h) => (h.some((c) => c.uid === uid) ? h : [...h, returning!]));
+    const fc = battlefieldStateRef.current.find((c) => c.uid === uid);
+    if (!fc) return;
+    if (handStateRef.current.some((c) => c.uid === uid)) return;
+    const returning = { card: fc.card, uid: fc.uid };
+    const nextBattlefield = battlefieldStateRef.current.filter((c) => c.uid !== uid);
+    battlefieldStateRef.current = nextBattlefield;
+    handStateRef.current = [...handStateRef.current, returning];
+    setBattlefield(nextBattlefield);
+    setHand(handStateRef.current);
   }, []);
 
   const moveBattlefieldToGraveyard = React.useCallback((uid: string) => {
@@ -572,21 +612,37 @@ export function TestTab({
     );
   };
 
-  const clientToBattlefieldPosition = (clientX: number, clientY: number) => {
+  const clientToBattlefieldPosition = (
+    clientX: number,
+    clientY: number,
+    tapped = false
+  ) => {
     const rect = battlefieldRef.current!.getBoundingClientRect();
-    const maxX = Math.max(0, rect.width - BF_CARD_W);
-    const maxY = Math.max(0, rect.height - BF_CARD_H);
-    return {
-      x: Math.min(maxX, Math.max(0, clientX - rect.left - BF_CARD_W / 2)),
-      y: Math.min(maxY, Math.max(0, clientY - rect.top - BF_CARD_H / 2)),
-    };
+    const { w, h } = battlefieldCardSize(tapped);
+    return clampBattlefieldPosition(
+      clientX - rect.left - w / 2,
+      clientY - rect.top - h / 2,
+      tapped,
+      rect
+    );
   };
+
+  const setBattlefieldSynced = React.useCallback(
+    (updater: (bf: BattlefieldCard[]) => BattlefieldCard[]) => {
+      setBattlefield((bf) => {
+        const next = updater(bf);
+        battlefieldStateRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
 
   const handleBattlefieldPointerDown = (e: React.PointerEvent, uid: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const fc = battlefield.find((c) => c.uid === uid);
+    const fc = battlefieldStateRef.current.find((c) => c.uid === uid);
     if (!fc || !battlefieldRef.current) return;
     dragMovedRef.current = false;
     dragRef.current = {
@@ -596,7 +652,9 @@ export function TestTab({
       startY: e.clientY,
       origX: fc.x,
       origY: fc.y,
+      tapped: fc.tapped,
     };
+    attachDragListeners();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -612,10 +670,11 @@ export function TestTab({
       startY: e.clientY,
     };
     setHandDragGhost({ uid: fc.uid, card: fc.card, x: e.clientX, y: e.clientY });
+    attachDragListeners();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleGlobalPointerMove = (e: React.PointerEvent) => {
+  const handleDragPointerMove = React.useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
 
@@ -624,7 +683,7 @@ export function TestTab({
     if (Math.hypot(dx, dy) > 4) dragMovedRef.current = true;
 
     if (drag.source === "hand") {
-      const handCard = hand.find((c) => c.uid === drag.uid);
+      const handCard = handStateRef.current.find((c) => c.uid === drag.uid);
       if (!handCard) return;
       setHandDragGhost({
         uid: drag.uid,
@@ -637,61 +696,94 @@ export function TestTab({
       return;
     }
 
-    const bfCard = battlefield.find((c) => c.uid === drag.uid);
+    const bfCard = battlefieldStateRef.current.find((c) => c.uid === drag.uid);
     if (!bfCard) return;
 
     const overHand = isPointOverHand(e.clientX, e.clientY);
-    const overBattlefield = isPointOverBattlefield(e.clientX, e.clientY);
     setHandDragOverHand(overHand);
-    setHandDragOverBattlefield(overBattlefield);
+    setHandDragOverBattlefield(isPointOverBattlefield(e.clientX, e.clientY));
 
-    if (dragMovedRef.current) {
-      setHandDragGhost({
-        uid: drag.uid,
-        card: bfCard.card,
-        x: e.clientX,
-        y: e.clientY,
-      });
-    }
-
-    if (overHand) return;
-
-    if (!battlefieldRef.current) return;
-    const rect = battlefieldRef.current.getBoundingClientRect();
-    const maxX = Math.max(0, rect.width - BF_CARD_W);
-    const maxY = Math.max(0, rect.height - BF_CARD_H);
-    const nx = Math.min(maxX, Math.max(0, drag.origX + dx));
-    const ny = Math.min(maxY, Math.max(0, drag.origY + dy));
-    setBattlefield((bf) =>
-      bf.map((c) => (c.uid === drag.uid ? { ...c, x: nx, y: ny } : c))
-    );
-  };
-
-  const handleGlobalPointerUp = (e: React.PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    dragRef.current = null;
-
-    if (drag.source === "hand" && dragMovedRef.current && battlefieldRef.current) {
-      if (isPointOverBattlefield(e.clientX, e.clientY)) {
-        const { x, y } = clientToBattlefieldPosition(e.clientX, e.clientY);
-        playHandCardToBattlefieldAt(drag.uid, x, y);
+    if (overHand) {
+      if (dragMovedRef.current) {
+        setHandDragGhost({
+          uid: drag.uid,
+          card: bfCard.card,
+          x: e.clientX,
+          y: e.clientY,
+        });
       }
-    }
-
-    if (drag.source === "battlefield" && dragMovedRef.current) {
-      if (isPointOverHand(e.clientX, e.clientY)) {
-        moveBattlefieldToHand(drag.uid);
-      }
+      return;
     }
 
     setHandDragGhost(null);
-    setHandDragOverBattlefield(false);
-    setHandDragOverHand(false);
-    window.setTimeout(() => {
-      dragMovedRef.current = false;
-    }, 0);
-  };
+
+    if (!battlefieldRef.current) return;
+    const rect = battlefieldRef.current.getBoundingClientRect();
+    const next = clampBattlefieldPosition(
+      drag.origX + dx,
+      drag.origY + dy,
+      drag.tapped,
+      rect
+    );
+    setBattlefieldSynced((bf) =>
+      bf.map((c) => (c.uid === drag.uid ? { ...c, x: next.x, y: next.y } : c))
+    );
+  }, [setBattlefieldSynced]);
+
+  const finishDrag = React.useCallback(
+    (e: PointerEvent) => {
+      dragListenersCleanupRef.current?.();
+      dragListenersCleanupRef.current = null;
+
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+
+      if (drag.source === "hand" && dragMovedRef.current && battlefieldRef.current) {
+        if (isPointOverBattlefield(e.clientX, e.clientY)) {
+          const { x, y } = clientToBattlefieldPosition(e.clientX, e.clientY);
+          playHandCardToBattlefieldAt(drag.uid, x, y);
+        }
+      }
+
+      if (drag.source === "battlefield" && dragMovedRef.current) {
+        if (isPointOverHand(e.clientX, e.clientY)) {
+          moveBattlefieldToHand(drag.uid);
+        } else if (isPointOverBattlefield(e.clientX, e.clientY)) {
+          const { x, y } = clientToBattlefieldPosition(
+            e.clientX,
+            e.clientY,
+            drag.tapped
+          );
+          setBattlefieldSynced((bf) =>
+            bf.map((c) => (c.uid === drag.uid ? { ...c, x, y } : c))
+          );
+        }
+      }
+
+      setHandDragGhost(null);
+      setHandDragOverBattlefield(false);
+      setHandDragOverHand(false);
+      window.setTimeout(() => {
+        dragMovedRef.current = false;
+      }, 0);
+    },
+    [moveBattlefieldToHand, playHandCardToBattlefieldAt, setBattlefieldSynced]
+  );
+
+  const attachDragListeners = React.useCallback(() => {
+    dragListenersCleanupRef.current?.();
+    const onMove = (e: PointerEvent) => handleDragPointerMove(e);
+    const onUp = (e: PointerEvent) => finishDrag(e);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    dragListenersCleanupRef.current = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [finishDrag, handleDragPointerMove]);
 
   const openContextMenu = (
     e: React.MouseEvent,
@@ -740,12 +832,7 @@ export function TestTab({
       className="flex overflow-hidden rounded-lg border border-border bg-background text-foreground"
       style={{ height: "calc(100vh - 11rem)", minHeight: 520 }}
     >
-      <div
-        className="flex min-w-0 flex-1 flex-col"
-        onPointerMove={handleGlobalPointerMove}
-        onPointerUp={handleGlobalPointerUp}
-        onPointerCancel={handleGlobalPointerUp}
-      >
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* ── Top bar ── */}
         <div
           className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3"

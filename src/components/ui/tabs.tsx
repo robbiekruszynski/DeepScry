@@ -73,7 +73,13 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
-      className={cn("w-full text-sm outline-none", className)}
+      className={cn(
+        "w-full text-sm outline-none",
+        // Base UI keeps inactive panels mounted while exit animations finish; hide
+        // immediately via inert/hidden so only the active panel affects layout.
+        "[&[inert]]:!hidden [&[hidden]]:!hidden [&[data-hidden]]:!hidden [&[data-ending-style]]:!hidden",
+        className
+      )}
       {...props}
     />
   )

@@ -89,6 +89,14 @@
   html {
     @apply font-sans;
   }
+
+  /* Tab panels: Base UI sets inert on inactive panels but leaves them in layout */
+  [role="tabpanel"][inert],
+  [role="tabpanel"][hidden],
+  [role="tabpanel"][data-hidden],
+  [role="tabpanel"][data-ending-style] {
+    display: none !important;
+  }
 }
 
 body {
