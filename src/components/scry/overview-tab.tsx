@@ -289,11 +289,11 @@ function OverviewDeckContent({
         </CardContent>
       </Card>
 
-      <div className="text-xs text-muted-foreground">
+      <div className="max-w-prose text-xs text-muted-foreground">
         Ramp and interaction are automatically classified from card text and tags.
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
         <StatCard title="Total cards" value={stats.totalCards} />
         <StatCard
           title="Lands"
@@ -419,13 +419,13 @@ function OverviewDeckContent({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Deck health vs benchmark metas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="text-xs leading-relaxed text-muted-foreground">
+            <div className="max-w-prose text-xs leading-relaxed text-muted-foreground">
               Heuristic comparison against four typical Commander power environments. Targets
               (lands, ramp, interaction, fast mana, tutors, average CMC) are based on established
               deckbuilding guidelines — not live tournament data. A high score means your build

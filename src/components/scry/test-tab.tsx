@@ -21,7 +21,6 @@ const BF_CARD_H = 100;
 const HAND_CARD_ASPECT = "5 / 7";
 const TOP_BAR_H = 40;
 const BOTTOM_BAR_H = 176;
-const SIDEBAR_W = 280;
 const DEFAULT_BF_X = 20;
 const DEFAULT_BF_Y = 24;
 
@@ -829,8 +828,8 @@ export function TestTab({
 
   return (
     <div
-      className="flex overflow-hidden rounded-lg border border-border bg-background text-foreground"
-      style={{ height: "calc(100vh - 11rem)", minHeight: 520 }}
+      className="flex min-h-[520px] w-full overflow-hidden rounded-lg border border-border bg-background text-foreground xl:min-h-[calc(100dvh-10rem)]"
+      style={{ height: "calc(100dvh - 10rem)" }}
     >
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── Top bar ── */}
@@ -1017,10 +1016,7 @@ export function TestTab({
       </div>
 
       {/* ── Right sidebar: preview + library controls ── */}
-      <aside
-        className="flex shrink-0 flex-col border-l border-border bg-muted/40"
-        style={{ width: SIDEBAR_W }}
-      >
+      <aside className="flex w-64 shrink-0 flex-col border-l border-border bg-muted/40 xl:w-56 2xl:w-52">
         <div
           className="shrink-0 border-b border-border p-2"
           aria-live="polite"

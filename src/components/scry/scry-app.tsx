@@ -16,6 +16,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
 type TabKey = "overview" | "hand" | "test" | "curve" | "probabilities" | "import";
 
+/** Wide fluid shell: ≥85% of 1920px viewports, unchanged padding on small screens */
+const APP_SHELL = "mx-auto w-full max-w-[min(1800px,95vw)] px-4 sm:px-6";
+
 function SplashPlaceholder() {
   return (
     <div
@@ -131,7 +134,7 @@ export function ScryApp() {
   return (
     <div className="flex-1">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
+        <div className={`flex w-full items-center justify-between gap-4 py-3 ${APP_SHELL}`}>
           <div className="min-w-0">
             <div
               className="truncate"
@@ -147,7 +150,7 @@ export function ScryApp() {
               Deep
               <span style={{ color: "#7C3AED", fontWeight: 400 }}>Scry</span>
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
+            <div className="mt-1 max-w-prose text-sm text-muted-foreground">
               Import a decklist, simulate hands, and inspect curve, colors, and
               probabilities.
             </div>
@@ -156,7 +159,7 @@ export function ScryApp() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-6">
+      <main className={`${APP_SHELL} py-6`}>
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="w-full">
           <div className="flex w-full flex-col gap-4">
             <TabsList className="w-full justify-start">

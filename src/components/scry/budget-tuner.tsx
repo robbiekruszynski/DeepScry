@@ -555,7 +555,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Budget tuner</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
           Set a per-card price ceiling for suggested upgrades. Leave it at 0 for unlimited/no
           budget, or enter a cap like 10 or 50. Suggestions are searched through Scryfall with
           your deck’s color identity, commander strategy, and cards you already own excluded.
@@ -670,7 +670,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                   already own it. Suggested adds never include cards already in your decklist.
                 </p>
               </div>
-              <div className="rounded border">
+              <div className="grid gap-2 sm:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
                 {suggestions.map((s, idx) => {
                   const tier = listTier(idx, addCount);
                   const tierStyle = ADD_TIER_ROW[tier];
@@ -682,7 +682,7 @@ export function BudgetTuner({ deck }: { deck: Deck }) {
                   return (
                     <div
                       key={s.card.id}
-                      className={`border-b px-2 py-2 last:border-b-0 ${tierStyle.row}`}
+                      className={`rounded border px-2 py-2 ${tierStyle.row}`}
                       onMouseEnter={() => setHovered(s.card)}
                     >
                       <div className="mb-0.5 flex flex-wrap items-center gap-2">
