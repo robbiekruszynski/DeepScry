@@ -84,6 +84,9 @@ export function ImportTab({
       const res = await runImport();
       setErrors(res.errors);
       onDeckChange(res.deck);
+      if (res.deck?.commanderName) {
+        onCommanderNameChange(res.deck.commanderName);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setErrors([msg]);

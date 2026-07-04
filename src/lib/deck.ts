@@ -138,3 +138,25 @@ export function expandDeck(deck: Deck): ScryfallCard[] {
   return out;
 }
 
+/** Resolve the commander deck entry from stored commanderName (handles count prefixes). */
+export function findCommanderEntry(deck: Deck): DeckEntry | null {
+  if (!deck.commanderName?.trim()) return null;
+  const target = normalizeCardNameForImport(deck.commanderName).toLowerCase();
+  return (
+    deck.entries.find((e) => e.card.name.toLowerCase() === target) ??
+    deck.entries.find(
+      (e) => normalizeCardNameForImport(e.card.name).toLowerCase() === target
+    ) ??
+    null
+  );
+}
+
+/** Canonical commander title for display — never includes a leading count. */
+export function getCommanderDisplayName(deck: Deck): string | null {
+  const entry = findCommanderEntry(deck);
+  if (entry) return entry.card.name;
+  const raw = deck.commanderName?.trim();
+  if (!raw) return null;
+  return normalizeCardNameForImport(raw);
+}
+

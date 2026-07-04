@@ -1,5 +1,5 @@
 import type { CardTag, CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
-import { expandDeck } from "@/lib/deck";
+import { expandDeck, findCommanderEntry } from "@/lib/deck";
 import { hypergeometricAtLeast } from "@/lib/analysis";
 import type { ScryfallCard } from "@/lib/scryfall";
 import {
@@ -38,11 +38,9 @@ export function countInteractionInCards(cards: ScryfallCard[], tagMap: CardTagMa
 }
 
 export function colorIdentityViolations(deck: Deck) {
-  if (!deck.commanderName) return [];
-  const commander = deck.entries.find(
-    (e) => e.card.name.toLowerCase() === deck.commanderName!.toLowerCase()
-  )?.card;
-  if (!commander) return [];
+  const commanderEntry = findCommanderEntry(deck);
+  if (!commanderEntry) return [];
+  const commander = commanderEntry.card;
 
   const commanderSet = new Set(commander.color_identity);
   return deck.entries

@@ -18,6 +18,8 @@ export type ScryfallCard = {
   oracle_text?: string;
   image_url?: string;
   image_url_large?: string;
+  image_url_normal?: string;
+  image_url_art_crop?: string;
   price_usd?: number | null;
   price_updated_at?: number;
   purchase_uris?: {
@@ -122,6 +124,16 @@ function cardFromScryfallJson(json: any): ScryfallCard {
           : faceImageUris?.large
             ? String(faceImageUris.large)
             : undefined,
+    image_url_normal: imageUris.normal
+      ? String(imageUris.normal)
+      : faceImageUris?.normal
+        ? String(faceImageUris.normal)
+        : undefined,
+    image_url_art_crop: imageUris.art_crop
+      ? String(imageUris.art_crop)
+      : faceImageUris?.art_crop
+        ? String(faceImageUris.art_crop)
+        : undefined,
     price_usd:
       json?.prices?.usd !== undefined && json?.prices?.usd !== null
         ? Number(json.prices.usd)

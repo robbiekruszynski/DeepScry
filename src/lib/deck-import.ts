@@ -1,5 +1,6 @@
 import {
   buildEntries,
+  normalizeCardNameForImport,
   parseDecklist,
   type Deck,
   type DeckArchetype,
@@ -25,7 +26,7 @@ export async function importDecklist({
   const parsed = parseDecklist(text);
   if (parsed.errors.length) return { deck: null, errors: parsed.errors };
 
-  const commanderInput = commanderName.trim();
+  const commanderInput = normalizeCardNameForImport(commanderName.trim());
   const namesToResolve = parsed.lines.map((l) => l.name);
   if (commanderInput) namesToResolve.push(commanderInput);
 
@@ -55,6 +56,8 @@ export async function importDecklist({
     };
   }
 
+  let resolvedCommanderName: string | undefined;
+
   if (commanderInput) {
     const commanderCard = cardsByRequestedName.get(commanderInput);
     if (!commanderCard) {
@@ -63,6 +66,8 @@ export async function importDecklist({
         errors: [`Could not resolve commander: ${commanderInput}`],
       };
     }
+
+    resolvedCommanderName = commanderCard.name;
 
     const alreadyInDeck = entries.some((e) => e.card.id === commanderCard.id);
     if (!alreadyInDeck) {
@@ -74,7 +79,7 @@ export async function importDecklist({
   return {
     deck: {
       entries,
-      commanderName: commanderInput || undefined,
+      commanderName: resolvedCommanderName,
       archetype,
     },
     errors: [],

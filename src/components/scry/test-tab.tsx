@@ -4,14 +4,13 @@ import * as React from "react";
 import { ChevronDown } from "lucide-react";
 
 import type { Deck } from "@/lib/deck";
-import { expandDeck } from "@/lib/deck";
+import { expandDeck, findCommanderEntry } from "@/lib/deck";
 import { isLand } from "@/lib/stats";
 import type { ScryfallCard } from "@/lib/scryfall";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
-const LIBRARY_BACK_URL = "https://cards.scryfall.io/back.jpg";
+const CARD_BACK_URL = "/card-back.jpg";
 const IMAGE_FETCH_DELAY_MS = 90;
 const imageUrlCache = new Map<string, string>();
 let imageFetchQueue = Promise.resolve();
@@ -60,7 +59,7 @@ type ContextMenuState =
   | {
       x: number;
       y: number;
-      zone: "hand" | "battlefield";
+      zone: "hand" | "battlefield" | "commander";
       uid: string;
     }
   | null;
@@ -217,25 +216,18 @@ export function TestTab({
   /** Wire from parent: `() => setTab("import")` */
   onGoToImport?: () => void;
 }) {
+  const commanderEntry = React.useMemo(
+    () => (deck ? findCommanderEntry(deck) : null),
+    [deck]
+  );
+
   const fullDeck = React.useMemo(() => {
     if (!deck) return [];
     const expanded = expandDeck(deck);
-    if (!deck.commanderName) return expanded;
-    const commanderIdx = expanded.findIndex(
-      (c) => c.name.toLowerCase() === deck.commanderName!.toLowerCase()
-    );
-    if (commanderIdx < 0) return expanded;
-    return [...expanded.slice(0, commanderIdx), ...expanded.slice(commanderIdx + 1)];
-  }, [deck]);
-
-  const commanderEntry = React.useMemo(() => {
-    if (!deck?.commanderName) return null;
-    return (
-      deck.entries.find(
-        (e) => e.card.name.toLowerCase() === deck.commanderName!.toLowerCase()
-      ) ?? null
-    );
-  }, [deck]);
+    if (!commanderEntry) return expanded;
+    const commanderId = commanderEntry.card.id;
+    return expanded.filter((c) => c.id !== commanderId);
+  }, [deck, commanderEntry]);
 
   const uidCounter = React.useRef(0);
   const nextUid = () => `fc-${++uidCounter.current}`;
@@ -266,6 +258,7 @@ export function TestTab({
   const dragMovedRef = React.useRef(false);
 
   const [library, setLibrary] = React.useState<ScryfallCard[]>([]);
+  const [commandZone, setCommandZone] = React.useState<FieldCard | null>(null);
   const [hand, setHand] = React.useState<FieldCard[]>([]);
   const [battlefield, setBattlefield] = React.useState<BattlefieldCard[]>([]);
   const [graveyard, setGraveyard] = React.useState<ScryfallCard[]>([]);
@@ -317,6 +310,11 @@ export function TestTab({
           uid: nextUid(),
         }))
       );
+      setCommandZone(
+        commanderEntry
+          ? { card: commanderEntry.card, uid: nextUid() }
+          : null
+      );
       setBattlefield([]);
       setGraveyard([]);
       setExile([]);
@@ -324,7 +322,7 @@ export function TestTab({
       setLife(40);
       setContextMenu(null);
     },
-    [fullDeck]
+    [fullDeck, commanderEntry]
   );
 
   const restartGame = React.useCallback(() => {
@@ -513,6 +511,36 @@ export function TestTab({
       setBattlefield(nextBattlefield);
     },
     []
+  );
+
+  const playCommanderToBattlefield = React.useCallback(() => {
+    setCommandZone((cz) => {
+      if (!cz) return cz;
+      const pos = nextBattlefieldPosition(battlefieldStateRef.current.length);
+      const nextBattlefield = [
+        ...battlefieldStateRef.current,
+        { ...cz, x: pos.x, y: pos.y, tapped: false },
+      ];
+      battlefieldStateRef.current = nextBattlefield;
+      setBattlefield(nextBattlefield);
+      return null;
+    });
+  }, []);
+
+  const returnBattlefieldToCommandZone = React.useCallback(
+    (uid: string) => {
+      if (!commanderEntry) return;
+      setCommandZone((cz) => {
+        if (cz) return cz;
+        const fc = battlefieldStateRef.current.find((c) => c.uid === uid);
+        if (!fc || fc.card.id !== commanderEntry.card.id) return cz;
+        const nextBattlefield = battlefieldStateRef.current.filter((c) => c.uid !== uid);
+        battlefieldStateRef.current = nextBattlefield;
+        setBattlefield(nextBattlefield);
+        return { card: fc.card, uid: fc.uid };
+      });
+    },
+    [commanderEntry]
   );
 
   const moveHandToGraveyard = React.useCallback((uid: string) => {
@@ -786,7 +814,7 @@ export function TestTab({
 
   const openContextMenu = (
     e: React.MouseEvent,
-    zone: "hand" | "battlefield",
+    zone: "hand" | "battlefield" | "commander",
     uid: string
   ) => {
     e.preventDefault();
@@ -812,6 +840,15 @@ export function TestTab({
   const showEmpty = !deck || fullDeck.length === 0;
   const topGy = graveyard[graveyard.length - 1];
   const topExile = exile[exile.length - 1];
+  const contextMenuBattlefieldCard =
+    contextMenu?.zone === "battlefield"
+      ? battlefield.find((c) => c.uid === contextMenu.uid)
+      : null;
+  const canReturnToCommandZone =
+    !!contextMenuBattlefieldCard &&
+    !!commanderEntry &&
+    contextMenuBattlefieldCard.card.id === commanderEntry.card.id &&
+    !commandZone;
 
   if (showEmpty) {
     return (
@@ -989,7 +1026,7 @@ export function TestTab({
             <ZoneTracker
               label="Library"
               count={library.length}
-              imageSrc={LIBRARY_BACK_URL}
+              imageSrc={CARD_BACK_URL}
               alt="Library"
               faceDown
             />
@@ -1006,10 +1043,27 @@ export function TestTab({
               alt={topExile?.name ?? "Exile"}
             />
             <ZoneTracker
-              label="Command"
-              count={commanderEntry ? 1 : 0}
-              imageSrc={commanderEntry ? imageUrl(commanderEntry.card) : null}
-              alt={commanderEntry?.card.name ?? "Commander"}
+              label="Commander"
+              count={commandZone ? 1 : 0}
+              imageSrc={commandZone ? imageUrl(commandZone.card) : null}
+              alt={commandZone?.card.name ?? "Commander"}
+              onClick={
+                commandZone
+                  ? () => {
+                      if (dragMovedRef.current) return;
+                      playCommanderToBattlefield();
+                    }
+                  : undefined
+              }
+              onContextMenu={
+                commandZone
+                  ? (e) => openContextMenu(e, "commander", commandZone.uid)
+                  : undefined
+              }
+              onMouseEnter={
+                commandZone ? () => setHoveredCard(commandZone.card) : undefined
+              }
+              onMouseLeave={commandZone ? () => setHoveredCard(null) : undefined}
             />
           </div>
         </div>
@@ -1102,9 +1156,9 @@ export function TestTab({
                     onClick={() => drawLibraryIndexToHand(index)}
                   >
                     <img
-                      src={LIBRARY_BACK_URL}
+                      src={CARD_BACK_URL}
                       alt=""
-                      className="h-8 w-6 shrink-0 rounded object-contain bg-[#0a1628]"
+                      className="h-8 w-6 shrink-0 rounded object-cover object-center bg-[#0a1628]"
                       draggable={false}
                     />
                     <span className="truncate">{card.name}</span>
@@ -1169,6 +1223,14 @@ export function TestTab({
                 }}
               />
             </>
+          ) : contextMenu.zone === "commander" ? (
+            <ContextMenuItem
+              label="Cast to Battlefield"
+              onClick={() => {
+                playCommanderToBattlefield();
+                setContextMenu(null);
+              }}
+            />
           ) : (
             <>
               <ContextMenuItem
@@ -1178,6 +1240,15 @@ export function TestTab({
                   setContextMenu(null);
                 }}
               />
+              {canReturnToCommandZone ? (
+                <ContextMenuItem
+                  label="Return to Commander zone"
+                  onClick={() => {
+                    returnBattlefieldToCommandZone(contextMenu.uid);
+                    setContextMenu(null);
+                  }}
+                />
+              ) : null}
               <ContextMenuItem
                 label="Move to Graveyard"
                 onClick={() => {
@@ -1261,9 +1332,9 @@ export function TestTab({
                             }}
                           >
                             <img
-                              src={LIBRARY_BACK_URL}
+                              src={CARD_BACK_URL}
                               alt=""
-                              className="h-12 w-9 shrink-0 rounded object-contain bg-[#0a1628]"
+                              className="h-12 w-9 shrink-0 rounded object-cover object-center bg-[#0a1628]"
                               draggable={false}
                               onError={(e) => {
                                 e.currentTarget.src = CARD_BACK_URL;
@@ -1288,9 +1359,9 @@ export function TestTab({
                 {libraryPreviewCard && libraryPreviewIndex !== null ? (
                   <>
                     <img
-                      src={LIBRARY_BACK_URL}
+                      src={CARD_BACK_URL}
                       alt="Card back"
-                      className="mx-auto w-full max-w-[180px] rounded-md border object-contain bg-[#0a1628] shadow-md"
+                      className="mx-auto w-full max-w-[180px] rounded-md border object-cover object-center bg-[#0a1628] shadow-md"
                       style={{ aspectRatio: HAND_CARD_ASPECT }}
                       draggable={false}
                       onError={(e) => {
@@ -1367,35 +1438,62 @@ function ZoneTracker({
   imageSrc,
   alt,
   faceDown = false,
+  onClick,
+  onContextMenu,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   label: string;
   count: number;
   imageSrc: string | null;
   alt: string;
   faceDown?: boolean;
+  onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }) {
+  const interactive = !!onClick;
+  const Wrapper = interactive ? "button" : "div";
+
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {label} ({count})
       </span>
-      <div
-        className="overflow-hidden rounded border border-border bg-card"
+      <Wrapper
+        type={interactive ? "button" : undefined}
+        className={`overflow-hidden rounded border border-border bg-card ${
+          interactive
+            ? "cursor-pointer transition hover:border-primary hover:ring-2 hover:ring-primary/40"
+            : ""
+        }`}
         style={{ width: 48, height: 67 }}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         {imageSrc ? (
           <img
             src={imageSrc}
             alt={alt}
-            className={`h-full w-full ${faceDown ? "object-contain bg-[#0a1628]" : "object-cover"}`}
+            className={`h-full w-full ${faceDown ? "object-cover object-center bg-[#0a1628]" : "object-cover"}`}
             draggable={false}
+            onError={
+              faceDown
+                ? undefined
+                : (e) => {
+                    e.currentTarget.src = CARD_BACK_URL;
+                  }
+            }
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[9px] text-muted-foreground/50">
             —
           </div>
         )}
-      </div>
+      </Wrapper>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import type { ScryfallCard } from "@/lib/scryfall";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-const CARD_BACK_URL = "https://cards.scryfall.io/back.jpg";
+const CARD_BACK_URL = "/card-back.jpg";
 const IMAGE_FETCH_DELAY_MS = 90;
 const HAND_CARD_ASPECT = "5 / 7";
 const imageUrlCache = new Map<string, string>();

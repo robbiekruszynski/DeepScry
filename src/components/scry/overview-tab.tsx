@@ -4,6 +4,9 @@ import * as React from "react";
 import { BarChart2, DollarSign, Hand, Percent } from "lucide-react";
 
 import type { CardTagMap, Deck } from "@/lib/deck";
+import { findCommanderEntry, getCommanderDisplayName } from "@/lib/deck";
+import type { ScryfallCard } from "@/lib/scryfall";
+import { fetchCardById } from "@/lib/scryfall";
 import { BudgetTuner } from "@/components/scry/budget-tuner";
 import {
   deckHealthWarnings,
@@ -37,6 +40,170 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+const MANA_COLORS: Record<string, { bg: string; label: string }> = {
+  W: { bg: "#f8f4e8", label: "#1a1a1a" },
+  U: { bg: "#0e4b6e", label: "#f8fafc" },
+  B: { bg: "#3d3d3d", label: "#f8fafc" },
+  R: { bg: "#9b1d20", label: "#f8fafc" },
+  G: { bg: "#2d6a3e", label: "#f8fafc" },
+};
+
+function commanderArtUrl(card: ScryfallCard, large = false) {
+  if (large) {
+    return (
+      card.image_url_large ||
+      card.image_url_normal ||
+      card.image_url ||
+      card.image_url_art_crop ||
+      null
+    );
+  }
+  return (
+    card.image_url_normal ||
+    card.image_url_large ||
+    card.image_url ||
+    card.image_url_art_crop ||
+    null
+  );
+}
+
+function ColorIdentityPips({ colors }: { colors: string[] }) {
+  if (colors.length === 0) {
+    return <span className="text-xs text-muted-foreground">Colorless</span>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {colors.map((color) => {
+        const style = MANA_COLORS[color];
+        if (!style) return null;
+        return (
+          <span
+            key={color}
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none"
+            style={{ backgroundColor: style.bg, color: style.label }}
+            title={color}
+          >
+            {color}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function CommanderArtPanel({
+  commanderEntry,
+  commanderName,
+}: {
+  commanderEntry: ReturnType<typeof findCommanderEntry>;
+  commanderName: string | null;
+}) {
+  const [card, setCard] = React.useState<ScryfallCard | null>(
+    commanderEntry?.card ?? null
+  );
+  const [status, setStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
+    "idle"
+  );
+  const [enlarged, setEnlarged] = React.useState(false);
+  const [imgFailed, setImgFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    setImgFailed(false);
+    setEnlarged(false);
+    if (!commanderName) {
+      setCard(null);
+      setStatus("idle");
+      return;
+    }
+
+    const initial = commanderEntry?.card ?? null;
+    setCard(initial);
+    if (initial && commanderArtUrl(initial)) {
+      setStatus("ready");
+      return;
+    }
+
+    if (!initial?.id) {
+      setStatus("error");
+      return;
+    }
+
+    let cancelled = false;
+    setStatus("loading");
+    void fetchCardById(initial.id)
+      .then((fetched) => {
+        if (cancelled) return;
+        setCard(fetched);
+        setStatus(commanderArtUrl(fetched) ? "ready" : "error");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [commanderEntry?.card.id, commanderName]);
+
+  if (!commanderName) {
+    return (
+      <div className="flex min-h-[180px] items-center justify-center rounded-lg border bg-muted/30 px-2 text-center text-xs text-muted-foreground">
+        Set a commander in Import to preview it here.
+      </div>
+    );
+  }
+
+  const artSrc = card ? commanderArtUrl(card, enlarged) : null;
+
+  return (
+    <div
+      className="rounded-lg border bg-muted/30 p-2 shadow-sm backdrop-blur-sm"
+      aria-live="polite"
+      onMouseEnter={() => setEnlarged(true)}
+      onMouseLeave={() => setEnlarged(false)}
+      onFocus={() => setEnlarged(true)}
+      onBlur={() => setEnlarged(false)}
+    >
+      {status === "loading" ? (
+        <div className="space-y-2">
+          <div className="mx-auto aspect-[5/7] w-full max-w-[220px] animate-pulse rounded-md bg-muted" />
+          <div className="mx-auto h-3 w-3/4 animate-pulse rounded bg-muted" />
+        </div>
+      ) : status === "ready" && artSrc && !imgFailed ? (
+        <div className="space-y-2">
+          <img
+            src={artSrc}
+            alt={card?.name ?? commanderName}
+            className={`mx-auto w-full rounded-md border object-contain transition-transform duration-200 ${
+              enlarged ? "max-h-[min(420px,55vh)]" : "max-h-[min(280px,38vh)]"
+            }`}
+            onError={() => setImgFailed(true)}
+          />
+          <div className="text-sm font-medium">{card?.name ?? commanderName}</div>
+          {card?.type_line ? (
+            <div className="text-xs text-muted-foreground">{card.type_line}</div>
+          ) : null}
+          {card?.scryfall_uri ? (
+            <a
+              href={card.scryfall_uri}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline-offset-2 hover:underline"
+            >
+              View on Scryfall
+            </a>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 px-2 text-center text-xs text-muted-foreground">
+          <span>Card image unavailable.</span>
+          <span className="font-medium text-foreground">{commanderName}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatCard({
   title,
@@ -152,7 +319,6 @@ function OverviewDeckContent({
   onEditImport: () => void;
   onStartOver: () => void;
 }) {
-  const [isCommanderPreviewOpen, setIsCommanderPreviewOpen] = React.useState(false);
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
   const warnings = React.useMemo(() => deckHealthWarnings(deck, tagMap), [deck, tagMap]);
   const benchmarkScores = React.useMemo(() => deckBenchmarkScores(deck), [deck]);
@@ -161,14 +327,9 @@ function OverviewDeckContent({
     deck,
     tagMap,
   ]);
-  const commanderEntry = React.useMemo(() => {
-    if (!deck.commanderName) return null;
-    const commanderName = deck.commanderName.toLowerCase();
-    return (
-      deck.entries.find((entry) => entry.card.name.toLowerCase() === commanderName) ??
-      null
-    );
-  }, [deck.commanderName, deck.entries]);
+  const commanderEntry = React.useMemo(() => findCommanderEntry(deck), [deck]);
+  const commanderDisplayName = React.useMemo(() => getCommanderDisplayName(deck), [deck]);
+  const commanderColors = commanderEntry?.card.color_identity ?? [];
   const groupedDecklist = React.useMemo(() => {
     const groups = [
       { label: "Creatures", test: isCreature },
@@ -207,55 +368,20 @@ function OverviewDeckContent({
     return out.filter((group) => group.entries.length > 0);
   }, [deck.entries]);
 
-  const commanderPreviewPanel = (
-    <div
-      className="rounded-lg border bg-muted/30 p-2 shadow-sm backdrop-blur-sm"
-      aria-live="polite"
-    >
-      {isCommanderPreviewOpen &&
-      (commanderEntry?.card.image_url_large || commanderEntry?.card.image_url) ? (
-        <div className="space-y-2">
-          <img
-            src={commanderEntry.card.image_url_large || commanderEntry.card.image_url}
-            alt={`${commanderEntry.card.name} preview`}
-            className="mx-auto h-auto max-h-[320px] w-auto rounded-md border object-contain"
-          />
-          <div className="text-sm font-medium">{commanderEntry.card.name}</div>
-          <div className="text-xs text-muted-foreground">{commanderEntry.card.type_line}</div>
-          {commanderEntry.card.scryfall_uri ? (
-            <a
-              href={commanderEntry.card.scryfall_uri}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs underline-offset-2 hover:underline"
-            >
-              View on Scryfall
-            </a>
-          ) : null}
-        </div>
-      ) : (
-        <div className="flex min-h-[180px] items-center justify-center px-2 text-center text-xs text-muted-foreground">
-          Hover the commander to preview.
-        </div>
-      )}
-    </div>
-  );
+  const commanderThumbUrl = commanderEntry
+    ? commanderArtUrl(commanderEntry.card, false)
+    : null;
 
   return (
     <div className="grid gap-4">
       <Card className="overflow-visible">
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_260px]">
-          <div
-            className="relative flex min-w-0 gap-3 outline-none"
-            tabIndex={commanderEntry ? 0 : undefined}
-            onMouseEnter={() => setIsCommanderPreviewOpen(true)}
-            onFocus={() => setIsCommanderPreviewOpen(true)}
-          >
-            {commanderEntry?.card.image_url ? (
+          <div className="relative flex min-w-0 gap-3">
+            {commanderThumbUrl ? (
               <img
-                src={commanderEntry.card.image_url}
-                alt={commanderEntry.card.name}
-                className="h-20 w-14 shrink-0 rounded border object-cover transition-transform hover:-translate-y-0.5"
+                src={commanderThumbUrl}
+                alt=""
+                className="h-20 w-14 shrink-0 rounded border object-cover"
               />
             ) : null}
             <div className="min-w-0">
@@ -263,12 +389,22 @@ function OverviewDeckContent({
                 Commander
               </div>
               <div className="truncate text-xl font-semibold">
-                {deck.commanderName ?? "No commander set"}
+                {commanderDisplayName ?? "No commander set"}
               </div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                {commanderEntry?.card.type_line ??
-                  "Set a commander in Import to enable color identity checks."}
-              </div>
+              {commanderDisplayName ? (
+                <div className="mt-2 space-y-1">
+                  {commanderEntry?.card.type_line ? (
+                    <div className="text-sm text-muted-foreground">
+                      {commanderEntry.card.type_line}
+                    </div>
+                  ) : null}
+                  <ColorIdentityPips colors={commanderColors} />
+                </div>
+              ) : (
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Set a commander in Import to enable color identity checks.
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <Badge variant="secondary">{stats.uniqueCards} unique</Badge>
                 <Badge variant="secondary">{stats.totalCards} total</Badge>
@@ -276,7 +412,10 @@ function OverviewDeckContent({
             </div>
           </div>
           <div className="space-y-3">
-            {commanderPreviewPanel}
+            <CommanderArtPanel
+              commanderEntry={commanderEntry}
+              commanderName={commanderDisplayName}
+            />
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={onEditImport}>
                 Edit / re-import
