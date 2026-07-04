@@ -1,0 +1,140 @@
+/**
+ * WotC Commander "Game Changers" list (Feb 9, 2026 update — 53 cards).
+ * Manually maintained; review when Wizards publishes bracket list updates (~quarterly).
+ * @see https://magic.wizards.com/en/news/announcements/introducing-commander-brackets-beta
+ */
+export const GAME_CHANGERS = [
+  "Ad Nauseam",
+  "Ancient Tomb",
+  "Aura Shards",
+  "Biorhythm",
+  "Bolas's Citadel",
+  "Braids, Cabal Minion",
+  "Chrome Mox",
+  "Coalition Victory",
+  "Consecrated Sphinx",
+  "Crop Rotation",
+  "Cyclonic Rift",
+  "Demonic Tutor",
+  "Drannith Magistrate",
+  "Enlightened Tutor",
+  "Farewell",
+  "Fierce Guardianship",
+  "Field of the Dead",
+  "Force of Will",
+  "Gaea's Cradle",
+  "Gamble",
+  "Gifts Ungiven",
+  "Glacial Chasm",
+  "Grand Arbiter Augustin IV",
+  "Grim Monolith",
+  "Humility",
+  "Imperial Seal",
+  "Intuition",
+  "Jeska's Will",
+  "Lion's Eye Diamond",
+  "Mana Vault",
+  "Mishra's Workshop",
+  "Mox Diamond",
+  "Mystical Tutor",
+  "Narset, Parter of Veils",
+  "Natural Order",
+  "Necropotence",
+  "Notion Thief",
+  "Opposition Agent",
+  "Orcish Bowmasters",
+  "Panoptic Mirror",
+  "Rhystic Study",
+  "Seedborn Muse",
+  "Serra's Sanctum",
+  "Smothering Tithe",
+  "Survival of the Fittest",
+  "Teferi's Protection",
+  "Tergrid, God of Fright",
+  "Thassa's Oracle",
+  "The One Ring",
+  "The Tabernacle at Pendrell Vale",
+  "Underworld Breach",
+  "Vampiric Tutor",
+  "Worldly Tutor",
+] as const;
+
+/** Fast mana counted for bracket signals (Sol Ring intentionally excluded). */
+export const BRACKET_FAST_MANA_STAPLES = [
+  "Ancient Tomb",
+  "Cabal Ritual",
+  "Chrome Mox",
+  "Dark Ritual",
+  "Grim Monolith",
+  "Jeweled Lotus",
+  "Lion's Eye Diamond",
+  "Lotus Petal",
+  "Mana Crypt",
+  "Mana Vault",
+  "Mox Amber",
+  "Mox Diamond",
+  "Mox Opal",
+  "Rite of Flame",
+  "Seething Song",
+  "Simian Spirit Guide",
+  "Elvish Spirit Guide",
+  "Pyretic Ritual",
+  "Mana Geyser",
+] as const;
+
+export const EXTRA_TURN_STAPLES = [
+  "Alrund's Epiphany",
+  "Capture of Jingzhou",
+  "Expropriate",
+  "Extra Turn",
+  "Nexus of Fate",
+  "Savor the Moment",
+  "Temporal Manipulation",
+  "Temporal Mastery",
+  "Temporal Trespass",
+  "Time Stretch",
+  "Time Warp",
+  "Walk the Aeons",
+] as const;
+
+export const MASS_LAND_DENIAL_STAPLES = [
+  "Armageddon",
+  "Boom // Bust",
+  "Catastrophe",
+  "Decree of Annihilation",
+  "Destructive Force",
+  "Devastation",
+  "Fall of the Thran",
+  "Impending Disaster",
+  "Jokulhaups",
+  "Obliterate",
+  "Ravages of War",
+  "Sunder",
+  "Wildfires",
+] as const;
+
+/**
+ * Curated two-card infinite combo staples (either name may appear on a single card).
+ * Manually maintained — not exhaustive.
+ */
+export const INFINITE_COMBO_PAIRS: readonly (readonly [string, string])[] = [
+  ["Thassa's Oracle", "Demonic Consultation"],
+  ["Thassa's Oracle", "Tainted Pact"],
+  ["Isochron Scepter", "Dramatic Reversal"],
+  ["Kiki-Jiki, Mirror Breaker", "Zealous Conscripts"],
+  ["Kiki-Jiki, Mirror Breaker", "Pestermite"],
+  ["Splinter Twin", "Deceiver Exarch"],
+  ["Splinter Twin", "Pestermite"],
+  ["Heliod, Sun-Crowned", "Walking Ballista"],
+  ["Worldgorger Dragon", "Animate Dead"],
+  ["Protean Hulk", "Flash"],
+  ["Dockside Extortionist", "Temur Sabertooth"],
+];
+
+export const BRACKET_LABELS: Record<number, string> = {
+  1: "Exhibition",
+  2: "Core",
+  3: "Upgraded",
+  4: "Optimized",
+  5: "cEDH",
+};

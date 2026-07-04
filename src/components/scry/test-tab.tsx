@@ -43,7 +43,12 @@ const HAND_HOVER_SCALE = 1.15;
 const HAND_HOVER_PART_PX = 12;
 const HAND_FAN_ROTATE_DEG = 1.25;
 const HAND_HOVER_TRANSITION = "transform 150ms ease-out";
-const HAND_ROW_HEIGHT = HAND_CARD_H + 24;
+/** Room above resting cards for hover lift + bottom-anchored scale (no extra bottom headroom). */
+const HAND_HOVER_HEADROOM =
+  HAND_HOVER_RISE_PX + Math.ceil(HAND_CARD_H * (HAND_HOVER_SCALE - 1));
+/** Shadow bleed below planted card bottoms. */
+const HAND_SHADOW_PAD = 8;
+const HAND_ROW_HEIGHT = HAND_CARD_H + HAND_HOVER_HEADROOM + HAND_SHADOW_PAD;
 const HAND_DRAW_ANIM_MS = 200;
 const TOP_BAR_H = 40;
 const BOTTOM_BAR_H = 176;
@@ -305,7 +310,7 @@ function handCardTransform(
       parts.push(`translateX(${HAND_HOVER_PART_PX}px)`);
     }
     if (index === hoveredIndex) {
-      parts.push(`translateY(${-HAND_HOVER_RISE_PX}px)`, `scale(${HAND_HOVER_SCALE})`);
+      parts.push(`scale(${HAND_HOVER_SCALE})`, `translateY(${-HAND_HOVER_RISE_PX}px)`);
     } else {
       const rot = (index - center) * HAND_FAN_ROTATE_DEG;
       parts.push(`rotate(${rot}deg)`);
@@ -334,7 +339,6 @@ const FannedHandRow = React.memo(function FannedHandRow({
   enteringUids,
   activeDragId,
   imageUrl,
-  onHover,
   onContextMenu,
 }: {
   cards: FieldCard[];
@@ -342,7 +346,6 @@ const FannedHandRow = React.memo(function FannedHandRow({
   enteringUids: Set<string>;
   activeDragId: string | null;
   imageUrl: (card: ScryfallCard) => string;
-  onHover: (uid: string | null, card: ScryfallCard | null) => void;
   onContextMenu: (e: React.MouseEvent | React.PointerEvent, uid: string) => void;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -357,8 +360,7 @@ const FannedHandRow = React.memo(function FannedHandRow({
   React.useEffect(() => {
     if (!spread) return;
     setHoveredIndex(null);
-    onHover(null, null);
-  }, [spread, onHover]);
+  }, [spread]);
 
   const updateFades = React.useCallback(() => {
     const el = scrollRef.current;
@@ -381,16 +383,13 @@ const FannedHandRow = React.memo(function FannedHandRow({
       );
       if (idx === null || idx === hoveredIndex) return;
       setHoveredIndex(idx);
-      const fc = cards[idx];
-      if (fc) onHover(fc.uid, fc.card);
     },
-    [cards, hoveredIndex, onHover]
+    [cards, hoveredIndex]
   );
 
   const handleFanPointerLeave = React.useCallback(() => {
     setHoveredIndex(null);
-    onHover(null, null);
-  }, [onHover]);
+  }, []);
 
   React.useEffect(() => {
     updateFades();
@@ -421,7 +420,10 @@ const FannedHandRow = React.memo(function FannedHandRow({
   }
 
   return (
-    <div className="relative overflow-visible" style={{ height: HAND_ROW_HEIGHT }}>
+    <div
+      className="relative box-border overflow-visible pb-2"
+      style={{ height: HAND_ROW_HEIGHT }}
+    >
       {fadeLeft ? (
         <div
           className="pointer-events-none absolute left-0 top-0 z-40 h-full w-8 bg-gradient-to-r from-muted/90 to-transparent"
@@ -442,7 +444,10 @@ const FannedHandRow = React.memo(function FannedHandRow({
         <div
           ref={fanInnerRef}
           className="relative mx-auto overflow-visible"
-          style={{ width: Math.max(trackWidth, 1), height: HAND_ROW_HEIGHT }}
+          style={{
+            width: Math.max(trackWidth, 1),
+            height: HAND_ROW_HEIGHT - HAND_SHADOW_PAD,
+          }}
           onMouseMove={handleFanPointerMove}
           onMouseLeave={handleFanPointerLeave}
         >
@@ -457,9 +462,10 @@ const FannedHandRow = React.memo(function FannedHandRow({
             return (
               <div
                 key={fc.uid}
-                className="absolute bottom-0 overflow-visible"
+                className="absolute overflow-visible"
                 style={{
                   left: slotLeft,
+                  bottom: 0,
                   width: HAND_CARD_W,
                   height: HAND_CARD_H,
                   zIndex,
@@ -530,7 +536,7 @@ const HandCardInner = React.memo(function HandCardInner({
         width: HAND_CARD_W,
         height: HAND_CARD_H,
         transform: composedTransform === "none" ? undefined : composedTransform,
-        transformOrigin: "center bottom",
+        transformOrigin: "bottom center",
         transition: isEntering ? undefined : HAND_HOVER_TRANSITION,
         willChange: "transform",
       }}
@@ -1461,7 +1467,6 @@ export function TestTab({
                   enteringUids={enteringHandUids}
                   activeDragId={activeDragId}
                   imageUrl={imageUrl}
-                  onHover={setHover}
                   onContextMenu={(e, uid) => openContextMenu(e, "hand", uid)}
                 />
               ) : (
@@ -1498,7 +1503,6 @@ export function TestTab({
                       imageSrc={CARD_BACK_URL}
                       alt="Library top"
                       faceDown
-                      onHover={setHoveredCard}
                       onContextMenu={(e) => openContextMenu(e, "library", "library-top")}
                     />
                   ) : (
@@ -1541,7 +1545,6 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(topGy.card)}
                       alt={topGy.card.name}
-                      onHover={setHoveredCard}
                       onContextMenu={(e) => openContextMenu(e, "graveyard", topGy.uid)}
                     />
                   </div>
@@ -1570,7 +1573,6 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(topExile.card)}
                       alt={topExile.card.name}
-                      onHover={setHoveredCard}
                       onContextMenu={(e) => openContextMenu(e, "exile", topExile.uid)}
                     />
                   </div>
@@ -1599,7 +1601,6 @@ export function TestTab({
                       }}
                       imageSrc={imageUrl(commandZone.card)}
                       alt={commandZone.card.name}
-                      onHover={setHoveredCard}
                       onContextMenu={(e) => openContextMenu(e, "commander", commandZone.uid)}
                     />
                   </div>
@@ -1634,7 +1635,7 @@ export function TestTab({
               </div>
             ) : (
               <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-2 text-center text-xs text-muted-foreground">
-                <p>Hover a card to preview it.</p>
+                <p>Hover a battlefield card to preview it.</p>
                 <p className="text-[10px] text-muted-foreground/70">
                   Drag between zones · right-click for actions
                 </p>

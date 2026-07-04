@@ -23,6 +23,7 @@ import {
   isLand,
   isSorcery,
 } from "@/lib/stats";
+import { estimateCommanderBracket, type BracketEstimate } from "@/lib/bracket";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -306,6 +307,48 @@ function OverviewLanding({ onImport }: { onImport: () => void }) {
   );
 }
 
+function BracketEstimateCard({ estimate }: { estimate: BracketEstimate }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Bracket Estimate</CardTitle>
+        <CardDescription>
+          Commander Brackets (1–5) from measurable deck signals
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-end gap-3">
+          <div className="text-5xl font-bold tabular-nums leading-none">
+            {estimate.primary}
+          </div>
+          <div className="min-w-0 pb-1">
+            <div className="text-lg font-medium">{estimate.label}</div>
+            <div className="text-sm text-muted-foreground">{estimate.bracketName}</div>
+          </div>
+        </div>
+
+        <details className="group rounded-md border bg-muted/20">
+          <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            Why
+          </summary>
+          <ul className="space-y-3 border-t px-3 py-3 text-sm">
+            {estimate.evidence.map((item) => (
+              <li key={item.id} className="space-y-1">
+                <div className="font-medium text-foreground">{item.label}</div>
+                {item.cards.length > 0 ? (
+                  <div className="text-muted-foreground">{item.cards.join(", ")}</div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+
+        <p className="text-xs text-muted-foreground">{estimate.disclaimer}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function OverviewDeckContent({
   deck,
   tagMap,
@@ -320,6 +363,10 @@ function OverviewDeckContent({
   onStartOver: () => void;
 }) {
   const stats = React.useMemo(() => computeDeckStats(deck), [deck]);
+  const bracketEstimate = React.useMemo(
+    () => estimateCommanderBracket(deck),
+    [deck]
+  );
   const warnings = React.useMemo(() => deckHealthWarnings(deck, tagMap), [deck, tagMap]);
   const benchmarkScores = React.useMemo(() => deckBenchmarkScores(deck), [deck]);
   const violations = React.useMemo(() => colorIdentityViolations(deck), [deck]);
@@ -447,6 +494,8 @@ function OverviewDeckContent({
         <StatCard title="Ramp" value={stats.rampCount} />
         <StatCard title="Interaction" value={stats.interactionCount} />
       </div>
+
+      <BracketEstimateCard estimate={bracketEstimate} />
 
       <Card>
         <details>

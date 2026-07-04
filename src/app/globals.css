@@ -121,6 +121,7 @@
   }
 
   .hand-card-entering {
+    transform-origin: bottom center;
     animation: hand-draw-in 200ms ease-out forwards;
   }
 }
