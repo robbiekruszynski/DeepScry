@@ -3,11 +3,44 @@
 import { useEffect, useRef, useState } from "react";
 
 const ORB_SIZE = 520;
+const RESIZE_DEBOUNCE_MS = 120;
+const MAX_DPR = 2;
+
+function debounce(fn, ms) {
+  let timeoutId = 0;
+  return (...args) => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => fn(...args), ms);
+  };
+}
+
+function getViewportSize() {
+  const vv = window.visualViewport;
+  const w = vv?.width ?? window.innerWidth;
+  const h = vv?.height ?? window.innerHeight;
+  return {
+    w: Math.max(1, Math.round(w)),
+    h: Math.max(1, Math.round(h)),
+  };
+}
+
+function getPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, MAX_DPR);
+}
 
 export function OrbHero({ onEnter }) {
   const mountRef = useRef(null);
   const [webglReady, setWebglReady] = useState(false);
   const [webglFailed, setWebglFailed] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.add("splash-active");
+    document.body.classList.add("splash-active");
+    return () => {
+      document.documentElement.classList.remove("splash-active");
+      document.body.classList.remove("splash-active");
+    };
+  }, []);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -16,24 +49,36 @@ export function OrbHero({ onEnter }) {
     let disposed = false;
     let animationFrameId = 0;
     let renderer;
-    let resizeObserver;
+    let W = 0;
+    let H = 0;
+    let nearStars;
+    let farStars;
+    let cleanupScene;
 
     mount.replaceChildren();
 
     const canvas = document.createElement("canvas");
     canvas.setAttribute("aria-hidden", "true");
     canvas.style.display = "block";
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
+    canvas.style.width = "100vw";
+    canvas.style.height = "100dvh";
+    canvas.style.position = "absolute";
+    canvas.style.inset = "0";
     mount.appendChild(canvas);
 
-    const getSize = () => {
-      const w = mount.clientWidth || window.innerWidth;
-      const h = mount.clientHeight || window.innerHeight;
-      return { w: Math.max(1, w), h: Math.max(1, h) };
+    const applyCanvasSize = () => {
+      const next = getViewportSize();
+      W = next.w;
+      H = next.h;
+      const dpr = getPixelRatio();
+      canvas.style.width = "100vw";
+      canvas.style.height = "100dvh";
+      if (renderer) {
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(W, H, false);
+      }
+      return { w: W, h: H, dpr };
     };
-
-    let cleanupScene;
 
     void (async () => {
       let THREE;
@@ -51,7 +96,7 @@ export function OrbHero({ onEnter }) {
         return;
       }
 
-      let { w: W, h: H } = getSize();
+      applyCanvasSize();
 
       try {
         renderer = new THREE.WebGLRenderer({
@@ -73,7 +118,7 @@ export function OrbHero({ onEnter }) {
         return;
       }
 
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setPixelRatio(getPixelRatio());
       renderer.setSize(W, H, false);
       renderer.setClearColor(0x070412, 1);
 
@@ -143,6 +188,15 @@ export function OrbHero({ onEnter }) {
       const ring3 = makeRing(1.48, 1.52, Math.PI / 6, -0.6, 0x4c1d95, 0.4);
       orbGroup.add(ring1, ring2, ring3);
 
+      function starfieldExtents() {
+        const viewMin = Math.min(W, H);
+        const scale = Math.max(1, viewMin / ORB_SIZE);
+        return {
+          near: { minR: 1.8 * scale, maxR: 4.8 * scale },
+          far: { minR: 5 * scale, maxR: 32 * scale },
+        };
+      }
+
       function buildStarfield(count, minR, maxR, size, opacity) {
         const positions = new Float32Array(count * 3);
         const data = [];
@@ -170,11 +224,33 @@ export function OrbHero({ onEnter }) {
           depthWrite: false,
         });
         const points = new THREE.Points(geo, mat);
-        return { points, positions, data, geo };
+        return { points, positions, data, geo, minR, maxR };
       }
 
-      const nearStars = buildStarfield(240, 1.8, 4.2, 0.03, 0.75);
-      const farStars = buildStarfield(520, 5, 28, 0.018, 0.45);
+      function regenerateStarfield(field, minR, maxR) {
+        field.minR = minR;
+        field.maxR = maxR;
+        const { positions, data } = field;
+        for (let i = 0; i < data.length; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const r = minR + Math.random() * (maxR - minR);
+          data[i] = {
+            theta,
+            phi,
+            r,
+            speed: 0.00008 + Math.random() * 0.0002,
+          };
+          positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+          positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          positions[i * 3 + 2] = r * Math.cos(phi);
+        }
+        field.geo.attributes.position.needsUpdate = true;
+      }
+
+      const extents = starfieldExtents();
+      nearStars = buildStarfield(240, extents.near.minR, extents.near.maxR, 0.03, 0.75);
+      farStars = buildStarfield(520, extents.far.minR, extents.far.maxR, 0.018, 0.45);
       scene.add(nearStars.points);
       scene.add(farStars.points);
 
@@ -211,17 +287,25 @@ export function OrbHero({ onEnter }) {
         geo.attributes.position.needsUpdate = true;
       }
 
-      const onResize = () => {
-        const next = getSize();
-        W = next.w;
-        H = next.h;
-        renderer.setSize(W, H, false);
+      const handleResize = () => {
+        if (disposed || !renderer) return;
+        applyCanvasSize();
         updateCamera();
+        const nextExtents = starfieldExtents();
+        regenerateStarfield(
+          nearStars,
+          nextExtents.near.minR,
+          nextExtents.near.maxR
+        );
+        regenerateStarfield(farStars, nextExtents.far.minR, nextExtents.far.maxR);
       };
 
-      resizeObserver = new ResizeObserver(onResize);
-      resizeObserver.observe(mount);
-      onResize();
+      const debouncedResize = debounce(handleResize, RESIZE_DEBOUNCE_MS);
+
+      window.addEventListener("resize", debouncedResize);
+      window.addEventListener("orientationchange", debouncedResize);
+      window.visualViewport?.addEventListener("resize", debouncedResize);
+      window.visualViewport?.addEventListener("scroll", debouncedResize);
 
       function animate() {
         if (disposed) return;
@@ -255,8 +339,15 @@ export function OrbHero({ onEnter }) {
       if (!disposed) setWebglReady(true);
 
       cleanupScene = () => {
+        window.removeEventListener("resize", debouncedResize);
+        window.removeEventListener("orientationchange", debouncedResize);
+        window.visualViewport?.removeEventListener("resize", debouncedResize);
+        window.visualViewport?.removeEventListener("scroll", debouncedResize);
         canvas.removeEventListener("mousemove", onMouseMove);
-        resizeObserver?.disconnect();
+        nearStars?.geo?.dispose();
+        farStars?.geo?.dispose();
+        nearStars?.points?.material?.dispose();
+        farStars?.points?.material?.dispose();
         renderer?.dispose();
         canvas.remove();
       };
@@ -290,54 +381,33 @@ export function OrbHero({ onEnter }) {
     <div
       {...enterProps}
       aria-label="Enter DeepScry"
+      className="fixed inset-0 z-50 h-[100dvh] w-screen overflow-hidden bg-[#070412]"
       style={{
-        position: "fixed",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        minHeight: "100dvh",
-        background: "#070412",
-        overflow: "hidden",
         cursor: onEnter ? "pointer" : "default",
       }}
     >
       <h2 className="sr-only">DeepScry — click anywhere to enter</h2>
 
-      {/* Full-viewport WebGL layer */}
-      <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
+      <div ref={mountRef} className="absolute inset-0 h-[100dvh] w-screen" />
 
-      {/* Orb hit area + branding (orb is drawn centered in the canvas above) */}
       <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          display: "flex",
-          minHeight: "100dvh",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          pointerEvents: "none",
-        }}
+        className="pointer-events-none relative z-[1] flex h-[100dvh] w-screen flex-col items-center justify-center"
       >
         <div
+          className="relative shrink-0"
           style={{
-            position: "relative",
             width: `min(${ORB_SIZE}px, 92vw)`,
-            height: `min(${ORB_SIZE}px, 62vh)`,
+            height: `min(${ORB_SIZE}px, 62dvh)`,
             minWidth: 280,
             minHeight: 280,
-            flexShrink: 0,
           }}
         >
           <div
             aria-hidden
+            className="absolute inset-0 m-auto rounded-full"
             style={{
-              position: "absolute",
-              inset: 0,
-              margin: "auto",
               width: "72%",
               height: "72%",
-              borderRadius: "50%",
               background:
                 "radial-gradient(circle at 32% 28%, #ddd6fe 0%, #7c3aed 38%, #4c1d95 62%, #1a1040 88%)",
               boxShadow:
@@ -349,16 +419,7 @@ export function OrbHero({ onEnter }) {
           />
         </div>
 
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: "2.5rem",
-            textAlign: "center",
-            pointerEvents: "none",
-          }}
-        >
+        <div className="pointer-events-none absolute inset-x-0 bottom-10 text-center">
           <div
             style={{
               fontFamily: "var(--font-sans)",

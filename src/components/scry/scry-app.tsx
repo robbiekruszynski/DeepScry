@@ -17,7 +17,12 @@ import type { CardTagMap, Deck, DeckArchetype } from "@/lib/deck";
 type TabKey = "overview" | "hand" | "test" | "curve" | "probabilities" | "import";
 
 function SplashPlaceholder() {
-  return <div className="fixed inset-0 bg-[#070412]" aria-hidden />;
+  return (
+    <div
+      className="fixed inset-0 z-50 h-[100dvh] w-screen overflow-hidden bg-[#070412]"
+      aria-hidden
+    />
+  );
 }
 
 export function ScryApp() {
@@ -34,6 +39,16 @@ export function ScryApp() {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  React.useEffect(() => {
+    if (hasEntered) return;
+    document.documentElement.classList.add("splash-active");
+    document.body.classList.add("splash-active");
+    return () => {
+      document.documentElement.classList.remove("splash-active");
+      document.body.classList.remove("splash-active");
+    };
+  }, [hasEntered]);
 
   React.useEffect(() => {
     if (!deck) {
