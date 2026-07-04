@@ -554,11 +554,15 @@ function BracketEstimateCard({ estimate }: { estimate: BracketEstimate }) {
           </div>
         </div>
 
-        <details className="group rounded-md border bg-muted/20">
-          <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
-            Why
+        <details className="group rounded-lg border border-border bg-background">
+          <summary className="flex w-full cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 [&::-webkit-details-marker]:hidden">
+            <span>Why this bracket?</span>
+            <ChevronDown
+              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180"
+              aria-hidden
+            />
           </summary>
-          <ul className="space-y-3 border-t px-3 py-3 text-sm">
+          <ul className="space-y-3 border-t border-border px-3 py-3 text-sm">
             {estimate.evidence.map((item) => (
               <li key={item.id} className="space-y-1">
                 <div className="font-medium text-foreground">{item.label}</div>
